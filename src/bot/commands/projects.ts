@@ -30,6 +30,22 @@ function formatProjectButtonLabel(label: string, isActive: boolean): string {
   return `${prefix}${label.slice(0, Math.max(0, availableLength - 3))}...`;
 }
 
+export function getProjectFolderName(worktree: string): string {
+  const normalized = worktree.replace(/[\\/]+$/g, "");
+
+  if (!normalized) {
+    return worktree;
+  }
+
+  const segments = normalized.split(/[\\/]/).filter(Boolean);
+  return segments.at(-1) ?? normalized;
+}
+
+export function buildProjectButtonLabel(index: number, worktree: string): string {
+  const folderName = getProjectFolderName(worktree);
+  return `${index + 1}. [${folderName}][${worktree}]`;
+}
+
 export async function projectsCommand(ctx: CommandContext<Context>) {
   try {
     await syncSessionDirectoryCache();
@@ -48,9 +64,7 @@ export async function projectsCommand(ctx: CommandContext<Context>) {
       const isActive =
         currentProject &&
         (project.id === currentProject.id || project.worktree === currentProject.worktree);
-      const label = project.name
-        ? `${index + 1}. ${project.name}`
-        : `${index + 1}. ${project.worktree}`;
+      const label = buildProjectButtonLabel(index, project.worktree);
       const labelWithCheck = formatProjectButtonLabel(label, Boolean(isActive));
       keyboard.text(labelWithCheck, `project:${project.id}`).row();
     });
