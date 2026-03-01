@@ -134,18 +134,30 @@ Examples:
 
 A PR with a title that does not follow this format will not be merged until it is corrected.
 
+### OS-sensitive changes
+
+Treat a change as OS-sensitive if it touches OS interaction, including:
+
+- Process management and signals
+- Path handling and separators
+- Shell command invocation or quoting
+- Filesystem behavior and permissions
+
+For OS-sensitive changes, verify behavior on Linux, macOS, and Windows. If you could not test one or more platforms directly, state that explicitly in the PR description and describe known limitations.
+
 ### PR Quality Bar
 
 **MUST**
 
 - PR title must follow the Conventional Commits format (see above).
 - PR must contain exactly one logically complete change (see above).
-- PR branch must be up to date with `main` HEAD and conflict-free.
+- At PR creation time, the branch must be rebased on the latest `main` and be conflict-free.
 - CI must pass (`npm run lint`, `npm run build`, `npm test`).
-- Changes must be compatible with both macOS and Windows (our primary supported platforms).
+- Changes must be compatible with Linux, macOS, and Windows (our supported platforms).
+- If a feature affects OS interaction (processes, paths, shell commands, filesystem behavior), it must work correctly on all three supported platforms.
 
 **SHOULD**
 
 - Add or update tests for behavior changes.
 - Describe user-visible impact in 1-2 lines in the PR description.
-- If you could not test on one platform locally, mention it in the PR description.
+- If you could not test on one or more supported platforms locally, mention it in the PR description.

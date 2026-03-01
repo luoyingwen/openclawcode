@@ -252,6 +252,10 @@ npm run dev
 
 Please follow commit and release note conventions in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Community
+
+Have questions, want to share your experience using the bot, or have an idea for a feature? Join the conversation in [GitHub Discussions](https://github.com/grinev/opencode-telegram-bot/discussions).
+
 ## License
 
 [MIT](LICENSE) © Ruslan Grinev
