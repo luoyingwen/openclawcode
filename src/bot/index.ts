@@ -21,6 +21,11 @@ import { opencodeStartCommand } from "./commands/opencode-start.js";
 import { opencodeStopCommand } from "./commands/opencode-stop.js";
 import { renameCommand, handleRenameCancel, handleRenameTextAnswer } from "./commands/rename.js";
 import {
+  commandsCommand,
+  handleCommandsCallback,
+  handleCommandTextArguments,
+} from "./commands/commands.js";
+import {
   handleQuestionCallback,
   showCurrentQuestion,
   handleQuestionTextAnswer,
@@ -554,12 +559,18 @@ export function createBot(): Bot<Context> {
   bot.command("new", newCommand);
   bot.command("stop", stopCommand);
   bot.command("rename", renameCommand);
+  bot.command("commands", commandsCommand);
 
   bot.on("message:text", unknownCommandMiddleware);
 
   bot.on("callback_query:data", async (ctx) => {
     logger.debug(`[Bot] Received callback_query:data: ${ctx.callbackQuery?.data}`);
     logger.debug(`[Bot] Callback context: from=${ctx.from?.id}, chat=${ctx.chat?.id}`);
+
+    if (ctx.chat) {
+      botInstance = bot;
+      chatIdInstance = ctx.chat.id;
+    }
 
     try {
       const handledInlineCancel = await handleInlineMenuCancel(ctx);
@@ -572,9 +583,10 @@ export function createBot(): Bot<Context> {
       const handledVariant = await handleVariantSelect(ctx);
       const handledCompactConfirm = await handleCompactConfirm(ctx);
       const handledRenameCancel = await handleRenameCancel(ctx);
+      const handledCommands = await handleCommandsCallback(ctx, { bot, ensureEventSubscription });
 
       logger.debug(
-        `[Bot] Callback handled: inlineCancel=${handledInlineCancel}, session=${handledSession}, project=${handledProject}, question=${handledQuestion}, permission=${handledPermission}, agent=${handledAgent}, model=${handledModel}, variant=${handledVariant}, compactConfirm=${handledCompactConfirm}, rename=${handledRenameCancel}`,
+        `[Bot] Callback handled: inlineCancel=${handledInlineCancel}, session=${handledSession}, project=${handledProject}, question=${handledQuestion}, permission=${handledPermission}, agent=${handledAgent}, model=${handledModel}, variant=${handledVariant}, compactConfirm=${handledCompactConfirm}, rename=${handledRenameCancel}, commands=${handledCommands}`,
       );
 
       if (
@@ -587,7 +599,8 @@ export function createBot(): Bot<Context> {
         !handledModel &&
         !handledVariant &&
         !handledCompactConfirm &&
-        !handledRenameCancel
+        !handledRenameCancel &&
+        !handledCommands
       ) {
         logger.debug("Unknown callback query:", ctx.callbackQuery?.data);
         await ctx.answerCallbackQuery({ text: t("callback.unknown_command") });
@@ -787,6 +800,9 @@ export function createBot(): Bot<Context> {
       return;
     }
 
+    botInstance = bot;
+    chatIdInstance = ctx.chat.id;
+
     if (text.startsWith("/")) {
       return;
     }
@@ -801,10 +817,12 @@ export function createBot(): Bot<Context> {
       return;
     }
 
-    botInstance = bot;
-    chatIdInstance = ctx.chat.id;
-
     const promptDeps = { bot, ensureEventSubscription };
+    const handledCommandArgs = await handleCommandTextArguments(ctx, promptDeps);
+    if (handledCommandArgs) {
+      return;
+    }
+
     await processUserPrompt(ctx, text, promptDeps);
 
     logger.debug("[Bot] message:text handler completed (prompt sent in background)");

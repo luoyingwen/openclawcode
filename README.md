@@ -26,6 +26,7 @@ Languages: English (`en`), Deutsch (`de`), Español (`es`), Русский (`ru`
 - **Live status** — pinned message with current project, model, context usage, and changed files list, updated in real time
 - **Model switching** — pick models from OpenCode favorites and recent history directly in the chat (favorites are shown first)
 - **Agent modes** — switch between Plan and Build modes on the fly
+- **Custom Commands** — run OpenCode custom commands (and built-ins like `init`/`review`) from an inline menu with confirmation
 - **Interactive Q&A** — answer agent questions and approve permissions via inline buttons
 - **Voice prompts** — send voice/audio messages, transcribe them via a Whisper-compatible API, then forward recognized text to OpenCode
 - **Context control** — compact context when it gets too large, right from the chat
@@ -103,6 +104,7 @@ opencode-telegram config
 | `/sessions`       | Browse and switch between recent sessions               |
 | `/projects`       | Switch between OpenCode projects                        |
 | `/rename`         | Rename the current session                              |
+| `/commands`       | Browse and run custom commands                          |
 | `/opencode_start` | Start the OpenCode server remotely                      |
 | `/opencode_stop`  | Stop the OpenCode server remotely                       |
 | `/help`           | Show available commands                                 |

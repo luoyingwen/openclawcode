@@ -6,6 +6,7 @@ export const de: I18nDictionary = {
   "cmd.description.stop": "Aktuelle Aktion stoppen",
   "cmd.description.sessions": "Sitzungen auflisten",
   "cmd.description.projects": "Projekte auflisten",
+  "cmd.description.commands": "Benutzerdefinierte Befehle",
   "cmd.description.opencode_start": "OpenCode-Server starten",
   "cmd.description.opencode_stop": "OpenCode-Server stoppen",
   "cmd.description.help": "Hilfe",
@@ -328,6 +329,22 @@ export const de: I18nDictionary = {
   "rename.blocked.command_not_allowed":
     "⚠️ Dieser Befehl ist nicht verfügbar, solange beim Umbenennen auf einen neuen Namen gewartet wird.",
   "rename.button.cancel": "❌ Abbrechen",
+
+  "commands.select": "Wähle einen OpenCode-Befehl:",
+  "commands.empty": "📭 Für dieses Projekt sind keine OpenCode-Befehle verfügbar.",
+  "commands.fetch_error": "🔴 OpenCode-Befehle konnten nicht geladen werden.",
+  "commands.no_description": "Keine Beschreibung",
+  "commands.button.execute": "✅ Ausführen",
+  "commands.button.cancel": "❌ Abbrechen",
+  "commands.confirm":
+    "Bestätige die Ausführung des Befehls {command}. Für die Ausführung mit Argumenten sende die Argumente als Nachricht.",
+  "commands.inactive_callback": "Dieses Befehlsmenü ist inaktiv",
+  "commands.cancelled_callback": "Abgebrochen",
+  "commands.execute_callback": "Befehl wird ausgeführt...",
+  "commands.executing_prefix": "⚡ Befehl wird ausgeführt:",
+  "commands.arguments_empty":
+    "⚠️ Argumente dürfen nicht leer sein. Sende Text oder tippe auf Ausführen.",
+  "commands.execute_error": "🔴 OpenCode-Befehl konnte nicht ausgeführt werden.",
 
   "cmd.description.rename": "Aktuelle Sitzung umbenennen",
 

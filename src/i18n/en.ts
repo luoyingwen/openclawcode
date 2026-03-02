@@ -4,6 +4,7 @@ export const en = {
   "cmd.description.stop": "Stop current action",
   "cmd.description.sessions": "List sessions",
   "cmd.description.projects": "List projects",
+  "cmd.description.commands": "Custom commands",
   "cmd.description.opencode_start": "Start OpenCode server",
   "cmd.description.opencode_stop": "Stop OpenCode server",
   "cmd.description.help": "Help",
@@ -315,6 +316,21 @@ export const en = {
   "rename.blocked.command_not_allowed":
     "⚠️ This command is not available while rename is waiting for a new name.",
   "rename.button.cancel": "❌ Cancel",
+
+  "commands.select": "Choose an OpenCode command:",
+  "commands.empty": "📭 No OpenCode commands are available for this project.",
+  "commands.fetch_error": "🔴 Failed to load OpenCode commands.",
+  "commands.no_description": "No description",
+  "commands.button.execute": "✅ Execute",
+  "commands.button.cancel": "❌ Cancel",
+  "commands.confirm":
+    "Confirm execution of command {command}. To run it with arguments, send the arguments as a message.",
+  "commands.inactive_callback": "This command menu is inactive",
+  "commands.cancelled_callback": "Cancelled",
+  "commands.execute_callback": "Executing command...",
+  "commands.executing_prefix": "⚡ Executing command:",
+  "commands.arguments_empty": "⚠️ Arguments cannot be empty. Send text or tap Execute.",
+  "commands.execute_error": "🔴 Failed to execute OpenCode command.",
 
   "cmd.description.rename": "Rename current session",
 

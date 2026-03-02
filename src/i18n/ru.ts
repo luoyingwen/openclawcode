@@ -6,6 +6,7 @@ export const ru: I18nDictionary = {
   "cmd.description.stop": "Прервать текущее действие",
   "cmd.description.sessions": "Список сессий",
   "cmd.description.projects": "Список проектов",
+  "cmd.description.commands": "Пользовательские команды",
   "cmd.description.opencode_start": "Запустить OpenCode сервер",
   "cmd.description.opencode_stop": "Остановить OpenCode сервер",
   "cmd.description.help": "Справка",
@@ -316,6 +317,22 @@ export const ru: I18nDictionary = {
   "rename.blocked.command_not_allowed":
     "⚠️ Эта команда недоступна, пока ожидается новое название сессии.",
   "rename.button.cancel": "❌ Отмена",
+
+  "commands.select": "Выберите команду OpenCode:",
+  "commands.empty": "📭 Для этого проекта нет доступных команд OpenCode.",
+  "commands.fetch_error": "🔴 Не удалось загрузить список команд OpenCode.",
+  "commands.no_description": "Без описания",
+  "commands.button.execute": "✅ Выполнить",
+  "commands.button.cancel": "❌ Отмена",
+  "commands.confirm":
+    "Подтвердите выполнение команды {command}. Для выполнения с аргументами отправьте аргументы отдельным сообщением.",
+  "commands.inactive_callback": "Это меню команд уже неактивно",
+  "commands.cancelled_callback": "Отменено",
+  "commands.execute_callback": "Запускаю команду...",
+  "commands.executing_prefix": "⚡ Выполнение команды:",
+  "commands.arguments_empty":
+    "⚠️ Аргументы не могут быть пустыми. Отправьте текст или нажмите Выполнить.",
+  "commands.execute_error": "🔴 Не удалось выполнить команду OpenCode.",
 
   "cmd.description.rename": "Переименовать текущую сессию",
 

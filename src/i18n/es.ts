@@ -6,6 +6,7 @@ export const es: I18nDictionary = {
   "cmd.description.stop": "Detener la acción actual",
   "cmd.description.sessions": "Listar sesiones",
   "cmd.description.projects": "Listar proyectos",
+  "cmd.description.commands": "Comandos personalizados",
   "cmd.description.opencode_start": "Iniciar servidor OpenCode",
   "cmd.description.opencode_stop": "Detener servidor OpenCode",
   "cmd.description.help": "Ayuda",
@@ -327,6 +328,22 @@ export const es: I18nDictionary = {
   "rename.blocked.command_not_allowed":
     "⚠️ Este comando no está disponible mientras el cambio de nombre espera un nuevo nombre.",
   "rename.button.cancel": "❌ Cancelar",
+
+  "commands.select": "Elige un comando de OpenCode:",
+  "commands.empty": "📭 No hay comandos de OpenCode disponibles para este proyecto.",
+  "commands.fetch_error": "🔴 No se pudieron cargar los comandos de OpenCode.",
+  "commands.no_description": "Sin descripción",
+  "commands.button.execute": "✅ Ejecutar",
+  "commands.button.cancel": "❌ Cancelar",
+  "commands.confirm":
+    "Confirma la ejecución del comando {command}. Para ejecutarlo con argumentos, envía los argumentos como mensaje.",
+  "commands.inactive_callback": "Este menú de comandos está inactivo",
+  "commands.cancelled_callback": "Cancelado",
+  "commands.execute_callback": "Ejecutando comando...",
+  "commands.executing_prefix": "⚡ Ejecutando comando:",
+  "commands.arguments_empty":
+    "⚠️ Los argumentos no pueden estar vacíos. Envía texto o toca Ejecutar.",
+  "commands.execute_error": "🔴 No se pudo ejecutar el comando de OpenCode.",
 
   "cmd.description.rename": "Renombrar la sesión actual",
 

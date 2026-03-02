@@ -6,6 +6,7 @@ export const zh: I18nDictionary = {
   "cmd.description.stop": "停止当前操作",
   "cmd.description.sessions": "列出会话",
   "cmd.description.projects": "列出项目",
+  "cmd.description.commands": "自定义命令",
   "cmd.description.opencode_start": "启动 OpenCode 服务器",
   "cmd.description.opencode_stop": "停止 OpenCode 服务器",
   "cmd.description.help": "帮助",
@@ -283,6 +284,20 @@ export const zh: I18nDictionary = {
   "rename.blocked.expected_name": "⚠️ 请以文本输入新会话名称，或在重命名消息中点击取消。",
   "rename.blocked.command_not_allowed": "⚠️ 重命名等待新名称期间不可用此命令。",
   "rename.button.cancel": "❌ 取消",
+
+  "commands.select": "请选择一个 OpenCode 命令：",
+  "commands.empty": "📭 当前项目没有可用的 OpenCode 命令。",
+  "commands.fetch_error": "🔴 加载 OpenCode 命令失败。",
+  "commands.no_description": "无描述",
+  "commands.button.execute": "✅ 执行",
+  "commands.button.cancel": "❌ 取消",
+  "commands.confirm": "请确认执行命令 {command}。若需带参数执行，请发送一条包含参数的消息。",
+  "commands.inactive_callback": "该命令菜单已失效",
+  "commands.cancelled_callback": "已取消",
+  "commands.execute_callback": "正在执行命令...",
+  "commands.executing_prefix": "⚡ 执行命令:",
+  "commands.arguments_empty": "⚠️ 参数不能为空。请发送文本或点击执行。",
+  "commands.execute_error": "🔴 执行 OpenCode 命令失败。",
 
   "cmd.description.rename": "重命名当前会话",
 
