@@ -1,8 +1,8 @@
-# OpenCode Telegram Bridge
+# OpenCode Telegram Bot
 
 Telegram bot client for OpenCode that lets you run and monitor coding tasks on your local machine from Telegram.
 
-> Project concept and boundaries are documented in `CONCEPT.md`.
+> Project concept and boundaries are documented in [`CONCEPT.md`](./CONCEPT.md).
 > Proposed changes that alter the core interaction model should be discussed before implementation.
 
 ## Concept
@@ -92,16 +92,16 @@ No public inbound ports are required for normal usage.
 
 Current command set:
 
-- [x] `/status` - server, project, and session status
-- [x] `/new` - create a new session
-- [x] `/stop` - stop the current task
-- [x] `/sessions` - show and switch recent sessions
-- [x] `/projects` - show and switch projects
-- [x] `/rename` - rename current session
-- [x] `/commands` - browse and run custom commands (plus built-ins like `init` and `review`)
-- [x] `/opencode_start` - start local OpenCode server
-- [x] `/opencode_stop` - stop local OpenCode server
-- [x] `/help` - show command help
+- `/status` - server, project, and session status
+- `/new` - create a new session
+- `/stop` - stop the current task
+- `/sessions` - show and switch recent sessions
+- `/projects` - show and switch projects
+- `/rename` - rename current session
+- `/commands` - browse and run custom commands (plus built-ins like `init` and `review`)
+- `/opencode_start` - start local OpenCode server
+- `/opencode_stop` - stop local OpenCode server
+- `/help` - show command help
 
 Model, agent, variant, and context actions are available from the persistent bottom keyboard.
 
@@ -124,37 +124,35 @@ Model picker behavior:
 
 ### Main features already implemented
 
-- [x] OpenCode server control and health checks via bot commands
-- [x] Project management (list/switch) with inline menus
-- [x] Session management (list/switch/create) with inline menus
-- [x] Prompt execution through OpenCode with SSE-based event handling
-- [x] Interactive question and permission flows (buttons + custom text answers)
-- [x] Single-active interaction routing with contextual blocking and cleanup recovery
-- [x] Pinned status updates (session, project, model, context usage, changed files)
-- [x] Model and agent selection from Telegram (favorites first, recent next, no duplicates)
-- [x] Context/variant controls from Telegram keyboard
-- [x] Sending code blocks as files when needed
-- [x] Configurable batching of service messages (thinking + tool updates): recommended `>=2` sec for Telegram rate limits; `0` = immediate
-- [x] Configurable service message visibility via env flags (`HIDE_THINKING_MESSAGES`, `HIDE_TOOL_CALL_MESSAGES`)
+- [x] Single-user access control by allowed Telegram user ID
+- [x] OpenCode server control from Telegram (`/status`, `/opencode_start`, `/opencode_stop`)
+- [x] Project and session management from Telegram (`/projects`, `/sessions`, `/new`)
+- [x] Remote task execution and interruption support (`/stop`)
+- [x] Telegram-friendly result delivery, including sending generated code/files when needed
+- [x] Interactive question and permission handling directly in chat (buttons + custom answers)
+- [x] Live pinned session status in chat (project, model, context usage, changed files)
+- [x] In-chat controls for model, agent, variant, and context
+- [x] Built-in and custom command catalog access (`/commands`)
+- [x] Persistent settings between restarts (`settings.json`)
+- [x] UI localization support via i18n files
+- [x] Service message visibility controls (thinking/tool updates)
+- [x] Sending code blocks as text files when needed
+- [x] Image attachments support (send photos/screenshots from Telegram to OpenCode)
+- [x] PDF attachments support (send documents from Telegram to OpenCode)
+- [x] Text file attachments support (send code/config/log files from Telegram to OpenCode)
 - [x] Voice/audio transcription via Whisper-compatible APIs (OpenAI/Groq/Together and compatible providers)
-- [x] Single-user security model (allowed Telegram user ID)
-- [x] Persistent bot settings (`settings.json`) between restarts
-- [x] Localization structure via dedicated i18n files
 
 ## Current Task List
 
 Open tasks for upcoming iterations:
 
-- [ ] Display MCP servers, formatters, and plugins in bot status/details
-- [x] Configure visibility level for thinking and intermediate steps
-- [ ] Add server crash notifications in Telegram
-- [ ] Add periodic health checks and optional auto-restart for OpenCode server
-- [x] Improve Telegram-compatible message formatting for richer outputs
-- [x] Support sending photos from Telegram to OpenCode (screenshots, images)
-- [x] Support sending PDF documents from Telegram to OpenCode
-- [x] Support sending text files from Telegram to OpenCode (code, configs, etc.)
-- [ ] Provide a Docker image and basic container deployment guide
-- [x] Add voice transcription
+- [ ] `/messages` command: browse session messages with fork/revert actions
+- [ ] `/skills` command: browse skills and choose one for usage
+- [ ] `/mcps` command: browse available MCP servers
+- [ ] Dynamic subagent activity display during task execution
+- [ ] Git tree support
+- [ ] Docker runtime support and deployment guide
+- [ ] OpenCode server monitoring with automatic restart on stop/crash
 
 ## Possible Improvements
 
@@ -162,4 +160,4 @@ Optional or longer-term enhancements:
 
 - [ ] Create new OpenCode projects directly from Telegram
 - [ ] Add project file browsing helpers (for example, `ls` and `open` flows)
-- [ ] Improve support for git worktree-based workflows
+- [ ] Add a bot settings command with in-chat UI

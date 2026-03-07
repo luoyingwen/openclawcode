@@ -35,6 +35,8 @@ Languages: English (`en`), Deutsch (`de`), Español (`es`), Русский (`ru`
 - **Security** — strict user ID whitelist; no one else can access your bot, even if they find it
 - **Localization** — UI localization is supported for multiple languages (`BOT_LOCALE`)
 
+Planned features currently in development are listed in [Current Task List](PRODUCT.md#current-task-list).
+
 ## Prerequisites
 
 - **Node.js 20+** — [download](https://nodejs.org)

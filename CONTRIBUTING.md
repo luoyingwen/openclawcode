@@ -6,9 +6,9 @@ Thanks for contributing to OpenCode Telegram Bot.
 
 ### Read project concept first
 
-Before proposing or implementing major behavior changes, read `CONCEPT.md`.
+Before proposing or implementing major behavior changes, read [`CONCEPT.md`](./CONCEPT.md).
 
-If your idea changes the core interaction model or conflicts with `CONCEPT.md`, open an issue/discussion first and wait for maintainer confirmation.
+If your idea changes the core interaction model or conflicts with [`CONCEPT.md`](./CONCEPT.md), open an issue/discussion first and wait for maintainer confirmation.
 
 ### What can go directly to PR
 
