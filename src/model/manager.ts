@@ -1,5 +1,6 @@
 import { getCurrentModel, setCurrentModel } from "../settings/manager.js";
 import { config } from "../config.js";
+import { opencodeClient } from "../opencode/client.js";
 import { logger } from "../utils/logger.js";
 import type { ModelInfo, FavoriteModel, ModelSelectionLists } from "./types.js";
 import path from "node:path";
@@ -7,6 +8,16 @@ import path from "node:path";
 interface OpenCodeModelState {
   favorite?: Array<{ providerID?: string; modelID?: string }>;
   recent?: Array<{ providerID?: string; modelID?: string }>;
+}
+
+const MODEL_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
+
+let cachedValidModelKeys: Set<string> | null = null;
+let modelCatalogCacheExpiresAt = 0;
+let modelCatalogFetchInFlight: Promise<Set<string> | null> | null = null;
+
+function getModelKey(providerID: string, modelID: string): string {
+  return `${providerID}/${modelID}`;
 }
 
 function getEnvDefaultModel(): FavoriteModel | null {
@@ -31,6 +42,79 @@ function dedupeModels(models: FavoriteModel[]): FavoriteModel[] {
   }
 
   return Array.from(unique.values());
+}
+
+function filterModelsByCatalog(
+  models: FavoriteModel[],
+  validModelKeys: Set<string> | null,
+): FavoriteModel[] {
+  if (!validModelKeys) {
+    return models;
+  }
+
+  return models.filter((model) => validModelKeys.has(getModelKey(model.providerID, model.modelID)));
+}
+
+async function getValidModelKeys(): Promise<Set<string> | null> {
+  if (cachedValidModelKeys && Date.now() < modelCatalogCacheExpiresAt) {
+    logger.debug(
+      `[ModelManager] Model catalog cache hit: models=${cachedValidModelKeys.size}, ttlMs=${modelCatalogCacheExpiresAt - Date.now()}`,
+    );
+    return cachedValidModelKeys;
+  }
+
+  if (modelCatalogFetchInFlight) {
+    logger.debug("[ModelManager] Awaiting in-flight model catalog refresh");
+    return modelCatalogFetchInFlight;
+  }
+
+  modelCatalogFetchInFlight = (async () => {
+    try {
+      logger.debug("[ModelManager] Refreshing model catalog from OpenCode API");
+      const response = await opencodeClient.config.providers();
+
+      if (response.error || !response.data) {
+        logger.warn("[ModelManager] Failed to refresh model catalog:", response.error);
+
+        if (cachedValidModelKeys) {
+          logger.warn("[ModelManager] Using stale model catalog cache after refresh failure");
+          return cachedValidModelKeys;
+        }
+
+        return null;
+      }
+
+      const validModelKeys = new Set<string>();
+
+      for (const provider of response.data.providers) {
+        for (const modelID of Object.keys(provider.models)) {
+          validModelKeys.add(getModelKey(provider.id, modelID));
+        }
+      }
+
+      cachedValidModelKeys = validModelKeys;
+      modelCatalogCacheExpiresAt = Date.now() + MODEL_CATALOG_CACHE_TTL_MS;
+
+      logger.debug(
+        `[ModelManager] Model catalog refreshed: providers=${response.data.providers.length}, models=${validModelKeys.size}`,
+      );
+
+      return cachedValidModelKeys;
+    } catch (err) {
+      logger.warn("[ModelManager] Error refreshing model catalog:", err);
+
+      if (cachedValidModelKeys) {
+        logger.warn("[ModelManager] Using stale model catalog cache after refresh exception");
+        return cachedValidModelKeys;
+      }
+
+      return null;
+    } finally {
+      modelCatalogFetchInFlight = null;
+    }
+  })();
+
+  return modelCatalogFetchInFlight;
 }
 
 function normalizeFavoriteModels(state: OpenCodeModelState): FavoriteModel[] {
@@ -97,9 +181,16 @@ export async function getModelSelectionLists(): Promise<ModelSelectionLists> {
     const state = JSON.parse(content) as OpenCodeModelState;
 
     const rawFavorites = normalizeFavoriteModels(state);
+    const rawRecent = normalizeRecentModels(state);
+    const shouldValidateWithCatalog = rawFavorites.length > 0 || rawRecent.length > 0;
+    const validModelKeys = shouldValidateWithCatalog ? await getValidModelKeys() : null;
+
+    const validatedFavorites = filterModelsByCatalog(rawFavorites, validModelKeys);
+    const validatedRecent = filterModelsByCatalog(rawRecent, validModelKeys);
+
     const favorites = envDefaultModel
-      ? dedupeModels([...rawFavorites, envDefaultModel])
-      : rawFavorites;
+      ? dedupeModels([...validatedFavorites, envDefaultModel])
+      : validatedFavorites;
 
     if (rawFavorites.length === 0 && envDefaultModel) {
       logger.info(
@@ -111,9 +202,20 @@ export async function getModelSelectionLists(): Promise<ModelSelectionLists> {
       logger.warn(`[ModelManager] No favorites in ${stateFilePath}`);
     }
 
-    const favoriteKeys = new Set(favorites.map((model) => `${model.providerID}/${model.modelID}`));
-    const recent = dedupeModels(normalizeRecentModels(state)).filter(
-      (model) => !favoriteKeys.has(`${model.providerID}/${model.modelID}`),
+    const filteredOutFavorites = rawFavorites.length - validatedFavorites.length;
+    const filteredOutRecent = rawRecent.length - validatedRecent.length;
+
+    if (filteredOutFavorites > 0 || filteredOutRecent > 0) {
+      logger.info(
+        `[ModelManager] Filtered unavailable models from OpenCode state: favoritesRemoved=${filteredOutFavorites}, recentRemoved=${filteredOutRecent}`,
+      );
+    }
+
+    const favoriteKeys = new Set(
+      favorites.map((model) => getModelKey(model.providerID, model.modelID)),
+    );
+    const recent = dedupeModels(validatedRecent).filter(
+      (model) => !favoriteKeys.has(getModelKey(model.providerID, model.modelID)),
     );
 
     logger.debug(
@@ -139,6 +241,56 @@ export async function getModelSelectionLists(): Promise<ModelSelectionLists> {
       recent: [],
     };
   }
+}
+
+/**
+ * Validate stored selected model against OpenCode providers catalog.
+ * If selected model is unavailable, fallback to env default model.
+ */
+export async function reconcileStoredModelSelection(): Promise<void> {
+  const currentModel = getCurrentModel();
+
+  if (!currentModel?.providerID || !currentModel.modelID) {
+    return;
+  }
+
+  const validModelKeys = await getValidModelKeys();
+
+  if (!validModelKeys) {
+    logger.warn("[ModelManager] Skipping stored model validation: model catalog unavailable");
+    return;
+  }
+
+  const currentModelKey = getModelKey(currentModel.providerID, currentModel.modelID);
+
+  if (validModelKeys.has(currentModelKey)) {
+    return;
+  }
+
+  const envDefaultModel = getEnvDefaultModel();
+  if (!envDefaultModel) {
+    logger.warn(
+      `[ModelManager] Stored model ${currentModelKey} is unavailable and env default model is missing`,
+    );
+    return;
+  }
+
+  const fallbackKey = getModelKey(envDefaultModel.providerID, envDefaultModel.modelID);
+  logger.warn(
+    `[ModelManager] Stored model ${currentModelKey} is unavailable, falling back to ${fallbackKey}`,
+  );
+
+  setCurrentModel({
+    providerID: envDefaultModel.providerID,
+    modelID: envDefaultModel.modelID,
+    variant: "default",
+  });
+}
+
+export function __resetModelCatalogCacheForTests(): void {
+  cachedValidModelKeys = null;
+  modelCatalogCacheExpiresAt = 0;
+  modelCatalogFetchInFlight = null;
 }
 
 /**

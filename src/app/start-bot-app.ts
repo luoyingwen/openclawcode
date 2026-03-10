@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { loadSettings } from "../settings/manager.js";
 import { processManager } from "../process/manager.js";
 import { warmupSessionDirectoryCache } from "../session/cache-manager.js";
+import { reconcileStoredModelSelection } from "../model/manager.js";
 import { getRuntimeMode } from "../runtime/mode.js";
 import { getRuntimePaths } from "../runtime/paths.js";
 import { logger } from "../utils/logger.js";
@@ -34,6 +35,7 @@ export async function startBotApp(): Promise<void> {
 
   await loadSettings();
   await processManager.initialize();
+  await reconcileStoredModelSelection();
   await warmupSessionDirectoryCache();
 
   const bot = createBot();

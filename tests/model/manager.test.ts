@@ -3,31 +3,104 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { configMock } = vi.hoisted(() => ({
-  configMock: {
-    opencode: {
-      model: {
-        provider: "opencode",
-        modelId: "big-pickle",
+const {
+  configMock,
+  providersMock,
+  getCurrentModelMock,
+  setCurrentModelMock,
+  setCurrentModelState,
+  getCurrentModelState,
+  resetCurrentModelState,
+  loggerInfoMock,
+  loggerWarnMock,
+  loggerErrorMock,
+  loggerDebugMock,
+} = vi.hoisted(() => {
+  let currentModel: { providerID: string; modelID: string; variant?: string } | undefined;
+
+  const getCurrentModelMock = vi.fn(() => currentModel);
+  const setCurrentModelMock = vi.fn(
+    (modelInfo: { providerID: string; modelID: string; variant?: string }) => {
+      currentModel = modelInfo;
+    },
+  );
+
+  return {
+    configMock: {
+      opencode: {
+        model: {
+          provider: "opencode",
+          modelId: "big-pickle",
+        },
       },
     },
-  },
-}));
+    providersMock: vi.fn(),
+    getCurrentModelMock,
+    setCurrentModelMock,
+    setCurrentModelState: (modelInfo?: {
+      providerID: string;
+      modelID: string;
+      variant?: string;
+    }) => {
+      currentModel = modelInfo;
+    },
+    getCurrentModelState: () => currentModel,
+    resetCurrentModelState: () => {
+      currentModel = undefined;
+      getCurrentModelMock.mockClear();
+      setCurrentModelMock.mockClear();
+    },
+    loggerInfoMock: vi.fn(),
+    loggerWarnMock: vi.fn(),
+    loggerErrorMock: vi.fn(),
+    loggerDebugMock: vi.fn(),
+  };
+});
 
 vi.mock("../../src/config.js", () => ({
   config: configMock,
 }));
 
-vi.mock("../../src/utils/logger.js", () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+vi.mock("../../src/opencode/client.js", () => ({
+  opencodeClient: {
+    config: {
+      providers: providersMock,
+    },
   },
 }));
 
-import { getModelSelectionLists, getFavoriteModels } from "../../src/model/manager.js";
+vi.mock("../../src/settings/manager.js", () => ({
+  getCurrentModel: getCurrentModelMock,
+  setCurrentModel: setCurrentModelMock,
+}));
+
+vi.mock("../../src/utils/logger.js", () => ({
+  logger: {
+    info: loggerInfoMock,
+    warn: loggerWarnMock,
+    error: loggerErrorMock,
+    debug: loggerDebugMock,
+  },
+}));
+
+import {
+  __resetModelCatalogCacheForTests,
+  getFavoriteModels,
+  getModelSelectionLists,
+  reconcileStoredModelSelection,
+} from "../../src/model/manager.js";
+
+function createProvidersResponse(modelsByProvider: Record<string, string[]>) {
+  return {
+    data: {
+      providers: Object.entries(modelsByProvider).map(([providerID, modelIDs]) => ({
+        id: providerID,
+        models: Object.fromEntries(modelIDs.map((modelID) => [modelID, { id: modelID }])),
+      })),
+    },
+    error: null,
+  };
+}
 
 describe("model/manager", () => {
   let tempDir = "";
@@ -37,11 +110,31 @@ describe("model/manager", () => {
   beforeEach(() => {
     originalXdgStateHome = process.env.XDG_STATE_HOME;
     originalHome = process.env.HOME;
+
+    vi.useRealTimers();
+    resetCurrentModelState();
+    __resetModelCatalogCacheForTests();
+
+    loggerInfoMock.mockReset();
+    loggerWarnMock.mockReset();
+    loggerErrorMock.mockReset();
+    loggerDebugMock.mockReset();
+
+    providersMock.mockReset();
+    providersMock.mockResolvedValue(
+      createProvidersResponse({
+        opencode: ["big-pickle"],
+        openai: ["gpt-4o", "gpt-3.5"],
+        anthropic: ["claude-sonnet"],
+        google: ["gemini-pro"],
+      }),
+    );
   });
 
   afterEach(async () => {
     process.env.XDG_STATE_HOME = originalXdgStateHome;
     process.env.HOME = originalHome;
+    vi.useRealTimers();
 
     if (tempDir) {
       await rm(tempDir, { recursive: true, force: true });
@@ -246,6 +339,73 @@ describe("model/manager", () => {
       expect(result.recent).toContainEqual({ providerID: "openai", modelID: "gpt-4o" });
       expect(result.recent).toContainEqual({ providerID: "google", modelID: "gemini-pro" });
     });
+
+    it("filters out models that are not present in provider catalog", async () => {
+      await setupMockModelFile({
+        favorite: [
+          { providerID: "openai", modelID: "gpt-4o" },
+          { providerID: "openai", modelID: "missing-favorite" },
+        ],
+        recent: [
+          { providerID: "google", modelID: "gemini-pro" },
+          { providerID: "google", modelID: "missing-recent" },
+        ],
+      });
+
+      const result = await getModelSelectionLists();
+
+      expect(result.favorites).toContainEqual({ providerID: "openai", modelID: "gpt-4o" });
+      expect(result.favorites).toContainEqual({ providerID: "opencode", modelID: "big-pickle" });
+      expect(result.favorites).not.toContainEqual({
+        providerID: "openai",
+        modelID: "missing-favorite",
+      });
+
+      expect(result.recent).toContainEqual({ providerID: "google", modelID: "gemini-pro" });
+      expect(result.recent).not.toContainEqual({
+        providerID: "google",
+        modelID: "missing-recent",
+      });
+    });
+
+    it("uses model catalog cache between repeated calls", async () => {
+      await setupMockModelFile({
+        favorite: [{ providerID: "openai", modelID: "gpt-4o" }],
+        recent: [{ providerID: "google", modelID: "gemini-pro" }],
+      });
+
+      await getModelSelectionLists();
+      await getModelSelectionLists();
+
+      expect(providersMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to stale model catalog cache when refresh fails", async () => {
+      const startTime = new Date("2026-01-01T00:00:00.000Z");
+      vi.useFakeTimers();
+      vi.setSystemTime(startTime);
+
+      await setupMockModelFile({
+        favorite: [
+          { providerID: "openai", modelID: "gpt-4o" },
+          { providerID: "openai", modelID: "retired" },
+        ],
+        recent: [{ providerID: "google", modelID: "gemini-pro" }],
+      });
+
+      const first = await getModelSelectionLists();
+      expect(first.favorites).toContainEqual({ providerID: "openai", modelID: "gpt-4o" });
+      expect(first.favorites).not.toContainEqual({ providerID: "openai", modelID: "retired" });
+
+      providersMock.mockResolvedValueOnce({ data: null, error: new Error("upstream unavailable") });
+      vi.setSystemTime(new Date(startTime.getTime() + 11 * 60 * 1000));
+
+      const second = await getModelSelectionLists();
+
+      expect(providersMock).toHaveBeenCalledTimes(2);
+      expect(second.favorites).toContainEqual({ providerID: "openai", modelID: "gpt-4o" });
+      expect(second.favorites).not.toContainEqual({ providerID: "openai", modelID: "retired" });
+    });
   });
 
   describe("getFavoriteModels", () => {
@@ -262,6 +422,34 @@ describe("model/manager", () => {
       expect(favorites).toContainEqual({ providerID: "opencode", modelID: "big-pickle" });
       // recent models should not be in favorites
       expect(favorites).not.toContainEqual({ providerID: "google", modelID: "gemini-pro" });
+    });
+  });
+
+  describe("reconcileStoredModelSelection", () => {
+    it("falls back to env default when stored model is unavailable", async () => {
+      setCurrentModelState({ providerID: "openai", modelID: "retired", variant: "high" });
+
+      await reconcileStoredModelSelection();
+
+      expect(getCurrentModelState()).toEqual({
+        providerID: "opencode",
+        modelID: "big-pickle",
+        variant: "default",
+      });
+      expect(setCurrentModelMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps stored model when it is available", async () => {
+      setCurrentModelState({ providerID: "openai", modelID: "gpt-4o", variant: "high" });
+
+      await reconcileStoredModelSelection();
+
+      expect(getCurrentModelState()).toEqual({
+        providerID: "openai",
+        modelID: "gpt-4o",
+        variant: "high",
+      });
+      expect(setCurrentModelMock).not.toHaveBeenCalled();
     });
   });
 });
