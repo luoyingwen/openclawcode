@@ -1,18 +1,11 @@
 name: General task
 description: Open a flexible task for community coordination
-title: "task: short summary"
+title: "[Task]: short summary"
 body:
   - type: textarea
-    id: summary
+    id: task
     attributes:
-      label: Summary
-      description: What should be done?
-      placeholder: One or two short sentences.
+      label: Task
+      placeholder: What should be done and what result is expected?
     validations:
       required: true
-
-  - type: textarea
-    id: context
-    attributes:
-      label: Additional context
-      description: Links, references, or examples (optional)

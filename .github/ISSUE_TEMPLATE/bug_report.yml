@@ -1,15 +1,14 @@
 name: Bug report
 description: Report a reproducible bug
-title: "fix(scope): short bug summary"
+title: "[Bug]: short summary"
 labels:
   - bug
 body:
   - type: textarea
-    id: summary
+    id: broken
     attributes:
-      label: Summary
-      description: What is broken?
-      placeholder: One or two short sentences.
+      label: What is broken?
+      placeholder: Describe the problem in one or two short sentences.
     validations:
       required: true
 
@@ -17,7 +16,6 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: How can we reproduce it?
       placeholder: |
         1. ...
         2. ...
@@ -25,37 +23,19 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behavior
-      placeholder: What should happen?
-    validations:
-      required: true
-
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual behavior
-      placeholder: What happens instead?
-    validations:
-      required: true
-
   - type: dropdown
     id: os
     attributes:
       label: OS
-      description: Select where the bug was observed
+      description: Optional
       multiple: true
       options:
         - Linux
         - macOS
         - Windows
-    validations:
-      required: true
 
   - type: textarea
     id: context
     attributes:
-      label: Additional context
-      description: Logs, screenshots, and related info (optional)
+      label: Additional context (optional)
+      description: Logs, screenshots, links, related issue/PR.

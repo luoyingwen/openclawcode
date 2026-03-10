@@ -1,6 +1,6 @@
 name: Feature request
 description: Propose a new feature for discussion before implementation
-title: "feat(scope): short feature summary"
+title: "[Feature]: short summary"
 labels:
   - enhancement
 body:
@@ -8,30 +8,20 @@ body:
     id: problem
     attributes:
       label: Problem
-      description: What problem are you trying to solve?
-      placeholder: One or two short sentences.
+      placeholder: What problem are you trying to solve?
     validations:
       required: true
 
   - type: textarea
-    id: solution
+    id: proposal
     attributes:
-      label: Proposed solution
-      description: What should be added or changed?
+      label: Proposal
+      placeholder: What should be added or changed?
     validations:
       required: true
 
   - type: textarea
-    id: impact
+    id: done_criteria
     attributes:
-      label: User impact
-      description: What will users gain and how behavior changes?
-    validations:
-      required: true
-
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives considered
-      description: Optional, but helpful
-      placeholder: Any other approaches you considered.
+      label: Done criteria (optional)
+      description: How will we understand that the task is complete?
