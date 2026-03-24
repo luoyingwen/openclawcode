@@ -89,10 +89,20 @@ describe("summary/formatter", () => {
     expect(parts[0]).toContain("*Main heading*");
     expect(parts[0]).toContain("> This is a quote\\.");
     expect(parts[0]).toContain("> Quote continues on next line\\.");
-    expect(parts[0]).toContain("| Header 1 | Header 2 |");
-    expect(parts[0]).toContain("| Cell A | Cell B |");
+    expect(parts[0]).toContain("\\| Header 1 \\| Header 2 \\|");
+    expect(parts[0]).toContain("\\| Cell A \\| Cell B \\|");
     expect(parts[0]).not.toContain("```\nHeader 1");
     expect(parts[0]).toContain("──────────");
+  });
+
+  it("escapes table pipes for MarkdownV2 outside code blocks", () => {
+    const text = ["| A | B |", "", "```ts", 'const row = "| raw |";', "```"].join("\n");
+
+    const parts = formatSummaryWithMode(text, "markdown");
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toContain("\\| A \\| B \\|");
+    expect(parts[0]).toContain('const row = "| raw |";');
   });
 
   it("renders markdown checklists as visual checkboxes", () => {

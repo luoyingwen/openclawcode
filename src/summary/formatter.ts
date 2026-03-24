@@ -181,11 +181,47 @@ export function getAssistantParseMode(): "MarkdownV2" | undefined {
 function formatMarkdownForTelegram(text: string): string {
   try {
     const preprocessed = preprocessMarkdownForTelegram(text);
-    return convert(preprocessed, "keep");
+    return escapeMarkdownV2PipesOutsideCode(convert(preprocessed, "keep"));
   } catch (error) {
     logger.warn("[Formatter] Failed to convert markdown summary, falling back to raw text", error);
     return text;
   }
+}
+
+function escapeMarkdownV2PipesOutsideCode(text: string): string {
+  let result = "";
+  let index = 0;
+  let inInlineCode = false;
+  let inCodeFence = false;
+
+  while (index < text.length) {
+    if (text.startsWith("```", index)) {
+      result += "```";
+      index += 3;
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+
+    const char = text[index];
+
+    if (!inCodeFence && char === "`") {
+      inInlineCode = !inInlineCode;
+      result += char;
+      index += 1;
+      continue;
+    }
+
+    if (!inCodeFence && !inInlineCode && char === "|" && text[index - 1] !== "\\") {
+      result += "\\|";
+      index += 1;
+      continue;
+    }
+
+    result += char;
+    index += 1;
+  }
+
+  return result;
 }
 
 export function formatSummaryWithMode(
