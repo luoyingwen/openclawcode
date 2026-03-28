@@ -54,6 +54,7 @@ import {
   formatToolInfo,
   getAssistantParseMode,
 } from "../summary/formatter.js";
+import { renderSubagentCards } from "../summary/subagent-formatter.js";
 import { ToolMessageBatcher } from "../summary/tool-message-batcher.js";
 import { getCurrentSession } from "../session/manager.js";
 import { ingestSessionInfoForCache } from "../session/cache-manager.js";
@@ -89,6 +90,7 @@ const TELEGRAM_DOCUMENT_CAPTION_MAX_LENGTH = 1024;
 const RESPONSE_STREAM_THROTTLE_MS = 200;
 const RESPONSE_STREAM_TEXT_LIMIT = 3800;
 const SESSION_RETRY_PREFIX = "🔁";
+const SUBAGENT_STREAM_PREFIX = "🧩";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TEMP_DIR = path.join(__dirname, "..", ".tmp");
@@ -401,7 +403,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
     const chatId = chatIdInstance;
 
     try {
-      const streamedViaMessages = await finalizeAssistantResponse({
+      await finalizeAssistantResponse({
         responseStreaming: config.bot.responseStreaming,
         sessionId,
         messageId,
@@ -425,16 +427,16 @@ async function ensureEventSubscription(directory: string): Promise<void> {
             format,
           });
         },
+        deleteMessages: async (messageIds) => {
+          for (const msgId of messageIds) {
+            try {
+              await botApi.deleteMessage(chatId, msgId);
+            } catch (err) {
+              logger.warn(`[Bot] Failed to delete streamed message ${msgId}:`, err);
+            }
+          }
+        },
       });
-
-      if (streamedViaMessages) {
-        logger.debug(
-          `[Bot] Final assistant message already streamed (session=${sessionId}, message=${messageId})`,
-        );
-        foregroundSessionState.markIdle(sessionId);
-        await scheduledTaskRuntime.flushDeferredDeliveries();
-        return;
-      }
     } catch (err) {
       logger.error("Failed to send message to Telegram:", err);
       // Stop processing events after critical error to prevent infinite loop
@@ -461,7 +463,11 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       toolInfo.hasFileAttachment &&
       (toolInfo.tool === "write" || toolInfo.tool === "edit" || toolInfo.tool === "apply_patch");
 
-    if (config.bot.hideToolCallMessages || shouldIncludeToolInfoInFileCaption) {
+    if (
+      config.bot.hideToolCallMessages ||
+      shouldIncludeToolInfoInFileCaption ||
+      toolInfo.tool === "task"
+    ) {
       return;
     }
 
@@ -472,6 +478,32 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       }
     } catch (err) {
       logger.error("Failed to send tool notification to Telegram:", err);
+    }
+  });
+
+  summaryAggregator.setOnSubagent(async (sessionId, subagents) => {
+    if (!botInstance || !chatIdInstance) {
+      return;
+    }
+
+    if (config.bot.hideToolCallMessages) {
+      return;
+    }
+
+    const currentSession = getCurrentSession();
+    if (!currentSession || currentSession.id !== sessionId) {
+      return;
+    }
+
+    try {
+      const renderedCards = await renderSubagentCards(subagents);
+      if (!renderedCards) {
+        return;
+      }
+
+      toolCallStreamer.replaceByPrefix(sessionId, SUBAGENT_STREAM_PREFIX, renderedCards);
+    } catch (err) {
+      logger.error("Failed to render subagent activity for Telegram:", err);
     }
   });
 
@@ -582,25 +614,45 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       responseStreaming: config.bot.responseStreaming,
       hideThinkingMessages: config.bot.hideThinkingMessages,
     });
+
+    // Refresh pinned message so it shows the latest in-memory context
+    // (accumulated from silent token updates). 1 API call per thinking event.
+    if (pinnedMessageManager.isInitialized()) {
+      await pinnedMessageManager.refresh();
+    }
   });
 
-  summaryAggregator.setOnTokens(async (tokens) => {
+  summaryAggregator.setOnTokens(async (tokens, isCompleted) => {
     if (!pinnedMessageManager.isInitialized()) {
       return;
     }
 
     try {
-      logger.debug(`[Bot] Received tokens: input=${tokens.input}, output=${tokens.output}`);
+      logger.debug(
+        `[Bot] Received tokens: input=${tokens.input}, output=${tokens.output}, completed=${isCompleted}`,
+      );
 
-      // Update keyboardManager SYNCHRONOUSLY before any await
-      // This ensures keyboard has correct context when onComplete sends the reply
       const contextSize = tokens.input + tokens.cacheRead;
       const contextLimit = pinnedMessageManager.getContextLimit();
+
+      // Skip non-completed messages with zero context: a new assistant message
+      // starts with tokens={input:0, ...} which would overwrite valid context
+      // from the previous step. Only accept zeros from completed messages.
+      if (!isCompleted && contextSize === 0) {
+        logger.debug("[Bot] Skipping zero-token intermediate update");
+        return;
+      }
+
+      // Update both keyboard and pinned state in memory (keeps them in sync)
       if (contextLimit > 0) {
         keyboardManager.updateContext(contextSize, contextLimit);
       }
+      pinnedMessageManager.updateTokensSilent(tokens);
 
-      await pinnedMessageManager.onMessageComplete(tokens);
+      // Full pinned message update (API call) only on completed messages
+      if (isCompleted) {
+        await pinnedMessageManager.onMessageComplete(tokens);
+      }
     } catch (err) {
       logger.error("[Bot] Error updating pinned message with tokens:", err);
     }
