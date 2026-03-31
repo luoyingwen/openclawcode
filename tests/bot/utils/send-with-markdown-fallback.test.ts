@@ -44,14 +44,18 @@ describe("bot/utils/send-with-markdown-fallback", () => {
       reply_markup: { keyboard: [] },
       parse_mode: "MarkdownV2",
     });
-    expect(sendMessage).toHaveBeenNthCalledWith(2, 123, "<broken>", {
+    expect(sendMessage).toHaveBeenNthCalledWith(2, 123, "<broken\\>", {
       reply_markup: { keyboard: [] },
+      parse_mode: "MarkdownV2",
     });
   });
 
   it("drops markdown formatting options on send fallback", async () => {
     const sendMessage = vi
       .fn()
+      .mockRejectedValueOnce(
+        new Error("Bad Request: can't parse entities: Character '+' is reserved"),
+      )
       .mockRejectedValueOnce(
         new Error("Bad Request: can't parse entities: Character '+' is reserved"),
       )
@@ -69,14 +73,43 @@ describe("bot/utils/send-with-markdown-fallback", () => {
       parseMode: "MarkdownV2",
     });
 
-    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenCalledTimes(3);
     expect(sendMessage).toHaveBeenNthCalledWith(1, 777, "a+b", {
       reply_markup: { keyboard: [] },
       parse_mode: "MarkdownV2",
       entities: [],
     });
-    expect(sendMessage).toHaveBeenNthCalledWith(2, 777, "a+b", {
+    expect(sendMessage).toHaveBeenNthCalledWith(2, 777, "a\\+b", {
       reply_markup: { keyboard: [] },
+      parse_mode: "MarkdownV2",
+      entities: [],
+    });
+    expect(sendMessage).toHaveBeenNthCalledWith(3, 777, "a+b", {
+      reply_markup: { keyboard: [] },
+    });
+  });
+
+  it("retries with escaped MarkdownV2 for reserved parentheses", async () => {
+    const sendMessage = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("Bad Request: can't parse entities: Character '(' is reserved"),
+      )
+      .mockResolvedValueOnce(undefined);
+
+    await sendMessageWithMarkdownFallback({
+      api: { sendMessage },
+      chatId: 888,
+      text: "Cost (USD)",
+      parseMode: "MarkdownV2",
+    });
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenNthCalledWith(1, 888, "Cost (USD)", {
+      parse_mode: "MarkdownV2",
+    });
+    expect(sendMessage).toHaveBeenNthCalledWith(2, 888, "Cost \\(USD\\)", {
+      parse_mode: "MarkdownV2",
     });
   });
 
@@ -167,14 +200,18 @@ describe("bot/utils/send-with-markdown-fallback", () => {
       reply_markup: { inline_keyboard: [] },
       parse_mode: "MarkdownV2",
     });
-    expect(editMessageText).toHaveBeenNthCalledWith(2, 42, 8, "<broken>", {
+    expect(editMessageText).toHaveBeenNthCalledWith(2, 42, 8, "<broken\\>", {
       reply_markup: { inline_keyboard: [] },
+      parse_mode: "MarkdownV2",
     });
   });
 
   it("drops markdown formatting options on edit fallback", async () => {
     const editMessageText = vi
       .fn()
+      .mockRejectedValueOnce(
+        new Error("Bad Request: can't parse entities: Character '+' is reserved"),
+      )
       .mockRejectedValueOnce(
         new Error("Bad Request: can't parse entities: Character '+' is reserved"),
       )
@@ -193,13 +230,18 @@ describe("bot/utils/send-with-markdown-fallback", () => {
       parseMode: "MarkdownV2",
     });
 
-    expect(editMessageText).toHaveBeenCalledTimes(2);
+    expect(editMessageText).toHaveBeenCalledTimes(3);
     expect(editMessageText).toHaveBeenNthCalledWith(1, 501, 902, "a+b", {
       reply_markup: { inline_keyboard: [] },
       parse_mode: "MarkdownV2",
       entities: [],
     });
-    expect(editMessageText).toHaveBeenNthCalledWith(2, 501, 902, "a+b", {
+    expect(editMessageText).toHaveBeenNthCalledWith(2, 501, 902, "a\\+b", {
+      reply_markup: { inline_keyboard: [] },
+      parse_mode: "MarkdownV2",
+      entities: [],
+    });
+    expect(editMessageText).toHaveBeenNthCalledWith(3, 501, 902, "a+b", {
       reply_markup: { inline_keyboard: [] },
     });
   });
