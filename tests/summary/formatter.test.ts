@@ -192,6 +192,25 @@ describe("summary/formatter", () => {
     expect(text).toBe("💻 Run tests\nbash npm test");
   });
 
+  it("truncates long bash commands with ellipsis", () => {
+    const longCommand = `node -e "${"a".repeat(160)}"`;
+
+    const text = formatToolInfo({
+      sessionId: "s1",
+      messageId: "m4b",
+      callId: "c4b",
+      tool: "bash",
+      state: { status: "completed" } as never,
+      input: {
+        command: longCommand,
+      },
+    });
+
+    expect(text).toMatch(/^💻 bash /);
+    expect(text?.endsWith("...")).toBe(true);
+    expect(text).toHaveLength("💻 bash ".length + 128);
+  });
+
   it("formats apply_patch tool details without dumping full patch", () => {
     const text = formatToolInfo({
       sessionId: "s1",

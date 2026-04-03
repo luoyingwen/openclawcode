@@ -134,6 +134,30 @@ describe("config boolean env parsing", () => {
     expect(config.bot.responseStreamThrottleMs).toBe(500);
   });
 
+  it("uses default bash tool display length when env is missing", async () => {
+    vi.stubEnv("BASH_TOOL_DISPLAY_MAX_LENGTH", "");
+
+    const config = await loadConfig();
+
+    expect(config.bot.bashToolDisplayMaxLength).toBe(128);
+  });
+
+  it("parses BASH_TOOL_DISPLAY_MAX_LENGTH as a positive integer", async () => {
+    vi.stubEnv("BASH_TOOL_DISPLAY_MAX_LENGTH", "256");
+
+    const config = await loadConfig();
+
+    expect(config.bot.bashToolDisplayMaxLength).toBe(256);
+  });
+
+  it("falls back to default bash tool display length on invalid value", async () => {
+    vi.stubEnv("BASH_TOOL_DISPLAY_MAX_LENGTH", "zero");
+
+    const config = await loadConfig();
+
+    expect(config.bot.bashToolDisplayMaxLength).toBe(128);
+  });
+
   it("parses TASK_LIMIT as a positive integer", async () => {
     vi.stubEnv("TASK_LIMIT", "25");
 
