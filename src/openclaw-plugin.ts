@@ -1,20 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import type { OpenClawPluginApi, PluginLogger } from "openclaw/plugin-sdk/core";
 import { loadJsonFile, writeJsonFileAtomically } from "openclaw/plugin-sdk/json-store";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
 
-const PLUGIN_VERSION = "0.15.0";
-const BUILD_MARKER = "progress-followups-2026-04-06-2115";
-const DIAGNOSTIC_VERSION = `v${PLUGIN_VERSION}+${BUILD_MARKER}`;
+const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const BUILD_INFO_PATH = path.join(PACKAGE_ROOT, "dist", "build-info.json");
 const DINGTALK_MESSAGE_LIMIT = 20_000;
 const HELLO_DELAY_MS = 30_000;
 const STATE_DIRNAME = "openclawcode";
 const STATE_FILENAME = "state.json";
 const ENTER_OPENCODE_COMMAND = "进入opencode";
 const LEAVE_OPENCODE_COMMAND = "离开opencode";
+
+type BuildInfoRecord = {
+  version?: unknown;
+  builtAt?: unknown;
+};
 
 type PluginConfig = {
   enabled?: boolean;
@@ -146,6 +151,43 @@ type ProgressEvent = {
     };
   };
 };
+
+function resolvePluginVersion(): string {
+  try {
+    const packageJsonPath = path.join(PACKAGE_ROOT, "package.json");
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as { version?: unknown };
+    return typeof packageJson.version === "string" && packageJson.version.trim()
+      ? packageJson.version.trim()
+      : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+function resolveBuildInfo(): BuildInfoRecord | null {
+  try {
+    const buildInfo = JSON.parse(fs.readFileSync(BUILD_INFO_PATH, "utf8")) as BuildInfoRecord;
+    return buildInfo && typeof buildInfo === "object" ? buildInfo : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveDiagnosticVersion(): string {
+  const buildInfo = resolveBuildInfo();
+  const version =
+    typeof buildInfo?.version === "string" && buildInfo.version.trim()
+      ? buildInfo.version.trim()
+      : resolvePluginVersion();
+  const builtAt =
+    typeof buildInfo?.builtAt === "string" && buildInfo.builtAt.trim()
+      ? buildInfo.builtAt.trim()
+      : undefined;
+
+  return builtAt ? `v${version} @ ${builtAt}` : `v${version}`;
+}
+
+const DIAGNOSTIC_VERSION = resolveDiagnosticVersion();
 
 function normalizeText(value: unknown): string | undefined {
   if (typeof value !== "string") {
