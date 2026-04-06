@@ -164,27 +164,30 @@ function resolvePluginVersion(): string {
   }
 }
 
-function resolveBuildInfo(): BuildInfoRecord | null {
+export function readBuildInfoFile(filePath: string): BuildInfoRecord | null {
   try {
-    const buildInfo = JSON.parse(fs.readFileSync(BUILD_INFO_PATH, "utf8")) as BuildInfoRecord;
+    const buildInfo = JSON.parse(fs.readFileSync(filePath, "utf8")) as BuildInfoRecord;
     return buildInfo && typeof buildInfo === "object" ? buildInfo : null;
   } catch {
     return null;
   }
 }
 
-function resolveDiagnosticVersion(): string {
-  const buildInfo = resolveBuildInfo();
+export function formatDiagnosticVersion(buildInfo: BuildInfoRecord | null, fallbackVersion: string): string {
   const version =
     typeof buildInfo?.version === "string" && buildInfo.version.trim()
       ? buildInfo.version.trim()
-      : resolvePluginVersion();
+      : fallbackVersion;
   const builtAt =
     typeof buildInfo?.builtAt === "string" && buildInfo.builtAt.trim()
       ? buildInfo.builtAt.trim()
       : undefined;
 
   return builtAt ? `v${version} @ ${builtAt}` : `v${version}`;
+}
+
+function resolveDiagnosticVersion(): string {
+  return formatDiagnosticVersion(readBuildInfoFile(BUILD_INFO_PATH), resolvePluginVersion());
 }
 
 const DIAGNOSTIC_VERSION = resolveDiagnosticVersion();

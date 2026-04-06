@@ -1,6 +1,11 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createPromptProgressTracker,
+  formatDiagnosticVersion,
+  readBuildInfoFile,
   resolvePromptProgressMessage,
   splitOutboundMessageText,
 } from "../src/openclaw-plugin.js";
@@ -101,5 +106,39 @@ describe("openclaw-plugin progress messages", () => {
         tracker,
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("openclaw-plugin build info", () => {
+  it("reads build-info.json and prefers its timestamp in the version string", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclawcode-build-info-"));
+    const buildInfoPath = path.join(tempDir, "build-info.json");
+
+    try {
+      fs.writeFileSync(
+        buildInfoPath,
+        `${JSON.stringify(
+          {
+            version: "0.15.0",
+            builtAt: "2026-04-06T22:12:38.558+08:00",
+          },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+
+      const buildInfo = readBuildInfoFile(buildInfoPath);
+
+      expect(buildInfo).toEqual({
+        version: "0.15.0",
+        builtAt: "2026-04-06T22:12:38.558+08:00",
+      });
+      expect(formatDiagnosticVersion(buildInfo, "0.0.0")).toBe(
+        "v0.15.0 @ 2026-04-06T22:12:38.558+08:00",
+      );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
