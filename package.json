@@ -11,8 +11,21 @@
     ".": "./dist/index.js",
     "./cli": "./dist/cli.js"
   },
+  "openclaw": {
+    "extensions": [
+      "./dist/openclaw-plugin.js"
+    ],
+    "plugin": {
+      "id": "openclawcode",
+      "enabledByDefault": false
+    },
+    "bundle": {
+      "stageRuntimeDependencies": true
+    }
+  },
   "files": [
     "dist",
+    "openclaw.plugin.json",
     "README.md",
     "LICENSE",
     ".env.example"
@@ -68,6 +81,7 @@
     "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.1.8",
+    "openclaw": "workspace:*",
     "prettier": "^3.8.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
