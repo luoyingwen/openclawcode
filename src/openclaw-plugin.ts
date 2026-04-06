@@ -6,7 +6,10 @@ import { loadJsonFile, writeJsonFileAtomically } from "openclaw/plugin-sdk/json-
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
 
-const DIAGNOSTIC_VERSION = "openclawcode-channel-2026-04-06-01";
+const PLUGIN_VERSION = "0.15.0";
+const BUILD_MARKER = "progress-followups-2026-04-06-2115";
+const DIAGNOSTIC_VERSION = `v${PLUGIN_VERSION}+${BUILD_MARKER}`;
+const DINGTALK_MESSAGE_LIMIT = 20_000;
 const HELLO_DELAY_MS = 30_000;
 const STATE_DIRNAME = "openclawcode";
 const STATE_FILENAME = "state.json";
@@ -64,6 +67,11 @@ type FollowUpRoute = {
   conversationId?: string;
 };
 
+type FollowUpMessage = {
+  text: string;
+  format?: "text" | "markdown";
+};
+
 type ProjectRecord = {
   id: string;
   worktree: string;
@@ -101,6 +109,42 @@ type ResponseTextPart = {
   type?: string;
   text?: string;
   ignored?: boolean;
+};
+
+type PromptProgressTracker = {
+  rootSessionId: string;
+  trackedSessionIds: Set<string>;
+  thinkingSent: boolean;
+  runningToolCalls: Set<string>;
+};
+
+type SessionLifecycleEvent = {
+  type?: string;
+  properties?: {
+    info?: {
+      id?: string;
+      parentID?: string;
+    };
+  };
+};
+
+type ProgressEvent = {
+  type?: string;
+  properties?: {
+    part?: {
+      sessionID?: string;
+      messageID?: string;
+      callID?: string;
+      tool?: string;
+      type?: string;
+      state?: {
+        status?: string;
+        input?: Record<string, unknown>;
+        title?: string;
+        metadata?: Record<string, unknown>;
+      };
+    };
+  };
 };
 
 function normalizeText(value: unknown): string | undefined {
@@ -291,10 +335,210 @@ function splitArgs(args: string): string[] {
   return normalized ? normalized.split(/\s+/) : [];
 }
 
-async function sendFollowUpText(
+export function createPromptProgressTracker(rootSessionId: string): PromptProgressTracker {
+  return {
+    rootSessionId,
+    trackedSessionIds: new Set([rootSessionId]),
+    thinkingSent: false,
+    runningToolCalls: new Set(),
+  };
+}
+
+function trackChildSessionFromEvent(event: SessionLifecycleEvent, tracker: PromptProgressTracker): void {
+  const eventType = normalizeText(event.type);
+  if (eventType !== "session.created" && eventType !== "session.updated") {
+    return;
+  }
+
+  const childSessionId = normalizeText(event.properties?.info?.id);
+  const parentSessionId = normalizeText(event.properties?.info?.parentID);
+  if (!childSessionId || !parentSessionId) {
+    return;
+  }
+
+  if (tracker.trackedSessionIds.has(parentSessionId)) {
+    tracker.trackedSessionIds.add(childSessionId);
+  }
+}
+
+function truncateToolText(value: string, maxLength = 160): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function formatToolLabel(tool: string): string {
+  switch (tool) {
+    case "bash":
+      return "terminal";
+    case "apply_patch":
+      return "patch";
+    case "write":
+      return "write";
+    case "edit":
+      return "edit";
+    default:
+      return tool;
+  }
+}
+
+function buildToolProgressMessage(part: NonNullable<ProgressEvent["properties"]>["part"]): string | null {
+  const tool = normalizeText(part?.tool);
+  const callId = normalizeText(part?.callID);
+  if (!tool || !callId) {
+    return null;
+  }
+
+  const title = normalizeText(part?.state?.title);
+  const input = part?.state?.input;
+
+  if (tool === "bash") {
+    const command = typeof input?.command === "string" ? input.command.trim() : "";
+    if (command) {
+      return `🛠️ terminal ${truncateToolText(command)}`;
+    }
+  }
+
+  const primaryDetail = title || (typeof input?.filePath === "string" ? input.filePath : undefined);
+  return primaryDetail
+    ? `🛠️ ${formatToolLabel(tool)} ${truncateToolText(primaryDetail)}`
+    : `🛠️ ${formatToolLabel(tool)} running`;
+}
+
+export function resolvePromptProgressMessage(
+  event: unknown,
+  tracker: PromptProgressTracker,
+): FollowUpMessage | undefined {
+  trackChildSessionFromEvent(event as SessionLifecycleEvent, tracker);
+
+  const progressEvent = event as ProgressEvent;
+  if (normalizeText(progressEvent.type) !== "message.part.updated") {
+    return undefined;
+  }
+
+  const part = progressEvent.properties?.part;
+  const sessionId = normalizeText(part?.sessionID);
+  if (!sessionId || !tracker.trackedSessionIds.has(sessionId)) {
+    return undefined;
+  }
+
+  if (part?.type === "reasoning" && !tracker.thinkingSent) {
+    tracker.thinkingSent = true;
+    return {
+      text: "💭 正在思考...",
+      format: "text",
+    };
+  }
+
+  if (part?.type !== "tool") {
+    return undefined;
+  }
+
+  const callId = normalizeText(part?.callID);
+  const status = normalizeText(part?.state?.status);
+  if (!callId || status !== "running") {
+    return undefined;
+  }
+
+  const toolKey = `${sessionId}:${callId}`;
+  if (tracker.runningToolCalls.has(toolKey)) {
+    return undefined;
+  }
+  tracker.runningToolCalls.add(toolKey);
+
+  const text = buildToolProgressMessage(part);
+  return text
+    ? {
+        text,
+        format: "text",
+      }
+    : undefined;
+}
+
+async function streamPromptProgress(params: {
+  api: OpenClawPluginApi;
+  client: ReturnType<typeof createClient>;
+  route: FollowUpRoute;
+  session: SessionState;
+  logger: PluginLogger;
+  abortSignal: AbortSignal;
+}): Promise<void> {
+  const { api, client, route, session, logger, abortSignal } = params;
+
+  try {
+    const result = await client.event.subscribe({ directory: session.directory }, { signal: abortSignal });
+    if (!result.stream) {
+      logger.warn(`[OpenClawCode] event.subscribe returned no stream for session=${session.id}`);
+      return;
+    }
+
+    const tracker = createPromptProgressTracker(session.id);
+    for await (const event of result.stream) {
+      if (abortSignal.aborted) {
+        break;
+      }
+
+      const message = resolvePromptProgressMessage(event, tracker);
+      if (!message) {
+        continue;
+      }
+
+      await sendFollowUpMessage(api, route, message, logger);
+    }
+  } catch (error) {
+    if (abortSignal.aborted) {
+      return;
+    }
+    logger.warn(`[OpenClawCode] prompt progress stream failed: ${String(error)}`);
+  }
+}
+
+export function splitOutboundMessageText(text: string, maxLength: number): string[] {
+  if (maxLength <= 0 || text.length <= maxLength) {
+    return text.trim() ? [text] : [];
+  }
+
+  const parts: string[] = [];
+  let currentIndex = 0;
+
+  while (currentIndex < text.length) {
+    let endIndex = currentIndex + maxLength;
+
+    if (endIndex >= text.length) {
+      parts.push(text.slice(currentIndex));
+      break;
+    }
+
+    const breakPoint = text.lastIndexOf("\n", endIndex);
+    if (breakPoint > currentIndex) {
+      endIndex = breakPoint + 1;
+    }
+
+    parts.push(text.slice(currentIndex, endIndex));
+    currentIndex = endIndex;
+  }
+
+  return parts.filter((part) => part.trim().length > 0);
+}
+
+function resolveFollowUpChunkLimit(
+  outbound: Awaited<ReturnType<OpenClawPluginApi["runtime"]["channel"]["outbound"]["loadAdapter"]>>,
   api: OpenClawPluginApi,
   route: FollowUpRoute,
-  text: string,
+): number {
+  return (
+    outbound?.resolveEffectiveTextChunkLimit?.({
+      cfg: api.config,
+      accountId: route.accountId,
+      fallbackLimit: outbound.textChunkLimit,
+    }) ??
+    outbound?.textChunkLimit ??
+    DINGTALK_MESSAGE_LIMIT
+  );
+}
+
+async function sendFollowUpMessage(
+  api: OpenClawPluginApi,
+  route: FollowUpRoute,
+  message: FollowUpMessage,
   logger: PluginLogger,
 ): Promise<void> {
   if (!route.channelId || !route.conversationId) {
@@ -305,6 +549,48 @@ async function sendFollowUpText(
   }
 
   const outbound = await api.runtime.channel.outbound.loadAdapter(route.channelId);
+  const text = message.text.trim();
+  if (!text) {
+    logger.warn("[OpenClawCode] follow-up skipped: empty message text");
+    return;
+  }
+
+  if (message.format === "markdown" && outbound?.sendPayload) {
+    await outbound.sendPayload({
+      cfg: api.config,
+      to: route.conversationId,
+      text,
+      payload: { text },
+      accountId: route.accountId,
+    });
+    return;
+  }
+
+  if (message.format === "text" && outbound?.sendText) {
+    const chunkLimit = resolveFollowUpChunkLimit(outbound, api, route);
+    const chunks = splitOutboundMessageText(text, chunkLimit);
+    for (const chunk of chunks) {
+      await outbound.sendText({
+        cfg: api.config,
+        to: route.conversationId,
+        text: chunk,
+        accountId: route.accountId,
+      });
+    }
+    return;
+  }
+
+  if (outbound?.sendPayload) {
+    await outbound.sendPayload({
+      cfg: api.config,
+      to: route.conversationId,
+      text,
+      payload: { text },
+      accountId: route.accountId,
+    });
+    return;
+  }
+
   if (!outbound?.sendText) {
     logger.warn(
       `[OpenClawCode] follow-up skipped: outbound adapter unavailable for channel=${route.channelId}`,
@@ -312,12 +598,16 @@ async function sendFollowUpText(
     return;
   }
 
-  await outbound.sendText({
-    cfg: api.config,
-    to: route.conversationId,
-    text,
-    accountId: route.accountId,
-  });
+  const chunkLimit = resolveFollowUpChunkLimit(outbound, api, route);
+  const chunks = splitOutboundMessageText(text, chunkLimit);
+  for (const chunk of chunks) {
+    await outbound.sendText({
+      cfg: api.config,
+      to: route.conversationId,
+      text: chunk,
+      accountId: route.accountId,
+    });
+  }
 }
 
 function routeToInterceptMode(route: FollowUpRoute): InterceptModeState {
@@ -365,10 +655,13 @@ function scheduleHelloDelay(
   logger: PluginLogger,
 ): void {
   const timer = setTimeout(() => {
-    void sendFollowUpText(
+    void sendFollowUpMessage(
       api,
       route,
-      `30s delay message (helloCount=${state.helloCount})`,
+      {
+        text: `30s delay message (helloCount=${state.helloCount})`,
+        format: "text",
+      },
       logger,
     ).catch((error) => {
       logger.error(`[OpenClawCode] delayed /hello message failed: ${String(error)}`);
@@ -449,6 +742,24 @@ async function ensureCurrentSession(
     directory: project.worktree,
   };
   return state.currentSession;
+}
+
+async function preparePromptSession(params: {
+  client: ReturnType<typeof createClient>;
+  config: PluginConfig;
+  state: PluginState;
+}): Promise<SessionState> {
+  const project = await ensureCurrentProject(params.client, params.config, params.state);
+  if (!project?.worktree) {
+    throw new Error(
+      "No project is selected. Set plugins.entries.openclawcode.config.defaultProjectDirectory or use /projects <index>.",
+    );
+  }
+
+  params.state.currentProject = project;
+  const session = await ensureCurrentSession(params.client, project, params.state);
+  params.state.currentSession = session;
+  return session;
 }
 
 async function fetchSessions(
@@ -538,22 +849,22 @@ async function fetchCommandList(
 
 function formatHelpText(): string {
   return [
-    "OpenClawCode Channel Commands",
+    "# OpenClawCode Channel Commands",
     "",
-    `/${ENTER_OPENCODE_COMMAND} - Enter OpenCode intercept mode for this conversation`,
-    `/${LEAVE_OPENCODE_COMMAND} - Leave OpenCode intercept mode for this conversation`,
-    "/help - Show this command list",
-    "/status - Show OpenCode health and current plugin state",
-    "/projects - List OpenCode projects",
-    "/projects <index> - Select the indexed project",
-    "/sessions - List sessions in the current project",
-    "/sessions <index> - Select the indexed session",
-    "/new - Create and select a new OpenCode session",
-    "/abort - Abort the current OpenCode session",
-    "/commands - List project commands exposed by OpenCode",
-    "/tts - Toggle the plugin TTS flag",
-    "/ping - Return Pong!",
-    "/hello - Return a demo reply and send a delayed follow-up",
+    `- /${ENTER_OPENCODE_COMMAND} - Enter OpenCode intercept mode for this conversation`,
+    `- /${LEAVE_OPENCODE_COMMAND} - Leave OpenCode intercept mode for this conversation`,
+    "- /help - Show this command list",
+    "- /status - Show OpenCode health and current plugin state",
+    "- /projects - List OpenCode projects",
+    "- /projects <index> - Select the indexed project",
+    "- /sessions - List sessions in the current project",
+    "- /sessions <index> - Select the indexed session",
+    "- /new - Create and select a new OpenCode session",
+    "- /abort - Abort the current OpenCode session",
+    "- /commands - List project commands exposed by OpenCode",
+    "- /tts - Toggle the plugin TTS flag",
+    "- /ping - Return Pong!",
+    "- /hello - Return a demo reply and send a delayed follow-up",
     "",
     "All commands except /进入opencode and /离开opencode only work after intercept mode is enabled.",
   ].join("\n");
@@ -567,14 +878,7 @@ async function sendPromptToOpencode(params: {
   content: string;
 }): Promise<string> {
   const { client, config, state, logger, content } = params;
-  const project = await ensureCurrentProject(client, config, state);
-  if (!project?.worktree) {
-    return "No project is selected. Set plugins.entries.openclawcode.config.defaultProjectDirectory or use /projects <index>.";
-  }
-
-  state.currentProject = project;
-  const session = await ensureCurrentSession(client, project, state);
-  state.currentSession = session;
+  const session = await preparePromptSession({ client, config, state });
 
   logger.info(
     `[OpenClawCode] forwarding message to OpenCode session=${session.id} directory=${session.directory} length=${content.length}`,
@@ -597,6 +901,50 @@ async function sendPromptToOpencode(params: {
   return "OpenCode accepted the message, but the response was empty.";
 }
 
+async function sendAsyncPromptToOpencodeWithProgress(params: {
+  api: OpenClawPluginApi;
+  client: ReturnType<typeof createClient>;
+  config: PluginConfig;
+  state: PluginState;
+  logger: PluginLogger;
+  route: FollowUpRoute;
+  content: string;
+}): Promise<string> {
+  const { api, client, config, state, logger, route, content } = params;
+  const session = await preparePromptSession({ client, config, state });
+
+  const progressAbortController = new AbortController();
+  const progressTask = streamPromptProgress({
+    api,
+    client,
+    route,
+    session,
+    logger,
+    abortSignal: progressAbortController.signal,
+  });
+
+  try {
+    logger.info(
+      `[OpenClawCode] forwarding async message to OpenCode session=${session.id} directory=${session.directory} length=${content.length}`,
+    );
+
+    const { data, error } = await client.session.prompt({
+      sessionID: session.id,
+      directory: session.directory,
+      parts: [{ type: "text", text: content }],
+    });
+    if (error || !data) {
+      throw error ?? new Error("OpenCode did not return a prompt response");
+    }
+
+    const responseText = collectResponseText((data.parts ?? []) as ResponseTextPart[]);
+    return responseText || "OpenCode accepted the message, but the response was empty.";
+  } finally {
+    progressAbortController.abort();
+    await progressTask;
+  }
+}
+
 function schedulePromptFollowUp(params: {
   api: OpenClawPluginApi;
   client: ReturnType<typeof createClient>;
@@ -611,22 +959,49 @@ function schedulePromptFollowUp(params: {
   setImmediate(() => {
     void (async () => {
       try {
-        const replyText = await sendPromptToOpencode({
+        const replyText = await sendAsyncPromptToOpencodeWithProgress({
+          api,
           client,
           config,
           state,
           logger,
+          route,
           content,
         });
         await savePluginState(state, logger);
-        await sendFollowUpText(api, route, replyText, logger);
+        await sendFollowUpMessage(
+          api,
+          route,
+          {
+            text: replyText,
+            format: "markdown",
+          },
+          logger,
+        );
+        await sendFollowUpMessage(
+          api,
+          route,
+          {
+            text: "✅ Done",
+            format: "text",
+          },
+          logger,
+        );
         logger.info(
           `[OpenClawCode] async prompt follow-up sent channel=${route.channelId ?? "unknown"} conversation=${route.conversationId ?? "unknown"}`,
         );
       } catch (error) {
         const errorText = `OpenClawCode prompt failed: ${String(error)}`;
         logger.error(`[OpenClawCode] async prompt failed: ${String(error)}`);
-        await sendFollowUpText(api, route, errorText, logger).catch((sendError) => {
+        await sendFollowUpMessage(
+          api,
+          route,
+          {
+            text: errorText,
+            format: "text",
+          },
+          logger,
+        ).catch((sendError) => {
           logger.error(`[OpenClawCode] async prompt error follow-up failed: ${String(sendError)}`);
         });
       }
@@ -636,31 +1011,35 @@ function schedulePromptFollowUp(params: {
 
 function formatProjects(projects: ProjectRecord[], state: PluginState): string {
   return [
-    "OpenCode Projects",
+    "# OpenCode Projects",
     "",
     ...projects.map((project, index) => {
       const isCurrent =
         state.currentProject &&
         normalizePathForMatch(state.currentProject.worktree) === normalizePathForMatch(project.worktree);
-      return `${isCurrent ? "*" : "-"} ${index + 1}. ${project.name ?? path.basename(project.worktree)} [${project.worktree}]`;
+      const prefix = isCurrent ? "- **" : "- ";
+      const suffix = isCurrent ? "**" : "";
+      return `${prefix}${index + 1}. ${project.name ?? path.basename(project.worktree)}${suffix}\n  - worktree: \`${project.worktree}\``;
     }),
   ].join("\n");
 }
 
 function formatSessions(sessions: SessionRecord[], state: PluginState): string {
   return [
-    "OpenCode Sessions",
+    "# OpenCode Sessions",
     "",
     ...sessions.map((session, index) => {
       const isCurrent = state.currentSession?.id === session.id;
-      return `${isCurrent ? "*" : "-"} ${index + 1}. ${session.title} [${session.id}]`;
+      const prefix = isCurrent ? "- **" : "- ";
+      const suffix = isCurrent ? "**" : "";
+      return `${prefix}${index + 1}. ${session.title}${suffix}\n  - id: \`${session.id}\``;
     }),
   ].join("\n");
 }
 
 function formatCommands(commands: CommandRecord[]): string {
   return [
-    "OpenCode Commands",
+    "# OpenCode Commands",
     "",
     ...commands.map((command) => `- /${command.name}${command.description ? ` - ${command.description}` : ""}`),
   ].join("\n");
@@ -713,17 +1092,17 @@ async function handleCommand(params: {
       }
 
       return [
-        "OpenClawCode Status",
+        "# OpenClawCode Status",
         "",
-        `OpenCode healthy: ${data.healthy ? "yes" : "no"}`,
-        `OpenCode version: ${normalizeText(data.version) ?? "unknown"}`,
-        `Configured base URL: ${config.opencodeBaseUrl ?? "http://localhost:4096"}`,
-        `Current project: ${state.currentProject?.worktree ?? config.defaultProjectDirectory ?? "not selected"}`,
-        `Current session: ${state.currentSession ? `${state.currentSession.title} [${state.currentSession.id}]` : "not selected"}`,
-        `Current session status: ${currentSessionStatus ?? "unknown"}`,
-        `Intercept mode: ${formatInterceptModeStatus(state)}`,
-        `TTS flag: ${state.ttsEnabled ? "on" : "off"}`,
-        `Hello count: ${state.helloCount}`,
+        `- OpenCode healthy: **${data.healthy ? "yes" : "no"}**`,
+        `- OpenCode version: \`${normalizeText(data.version) ?? "unknown"}\``,
+        `- Configured base URL: \`${config.opencodeBaseUrl ?? "http://localhost:4096"}\``,
+        `- Current project: \`${state.currentProject?.worktree ?? config.defaultProjectDirectory ?? "not selected"}\``,
+        `- Current session: ${state.currentSession ? `**${state.currentSession.title}** [\`${state.currentSession.id}\`]` : "not selected"}`,
+        `- Current session status: ${currentSessionStatus ?? "unknown"}`,
+        `- Intercept mode: ${formatInterceptModeStatus(state)}`,
+        `- TTS flag: ${state.ttsEnabled ? "on" : "off"}`,
+        `- Hello count: ${state.helloCount}`,
       ].join("\n");
     } catch (error) {
       return `Failed to read OpenCode status: ${String(error)}`;
@@ -851,7 +1230,7 @@ export default definePluginEntry({
     const state = loadPluginState(logger);
 
     logger.info(
-      `[OpenClawCode] register start version=${DIAGNOSTIC_VERSION} config=${JSON.stringify({
+      `[OpenClawCode] register start version=${DIAGNOSTIC_VERSION} features=thinking,tool-progress,done config=${JSON.stringify({
         ...config,
         opencodePassword: config.opencodePassword ? "***" : undefined,
       })}`,
@@ -1001,6 +1380,6 @@ export default definePluginEntry({
       }
     });
 
-    logger.info(`[OpenClawCode] register end version=${DIAGNOSTIC_VERSION}`);
+    logger.info(`[OpenClawCode] register end version=${DIAGNOSTIC_VERSION} features=thinking,tool-progress,done`);
   },
 });
