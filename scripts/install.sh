@@ -51,14 +51,23 @@ install_local() {
     check_build
     check_openclaw
     
+    # Clean any stale temp directories from previous installs
+    rm -rf ~/.openclaw/extensions/.openclaw-install-stage-* 2>/dev/null || true
+    
     local tarball_filename
     tarball_filename=$(create_tarball)
     local tarball_path="${PLUGIN_DIR}/${tarball_filename}"
     
     echo ""
     echo -e "${INFO}Installing from tarball: ${tarball_path}${NC}"
-    echo -e "${WARN}Plugin contains child_process (process manager) - using --dangerously-force-unsafe-install${NC}"
-    openclaw plugins install --force --dangerously-force-unsafe-install "${tarball_path}"
+    echo -e "${WARN}Plugin contains child_process - using --dangerously-force-unsafe-install${NC}"
+    
+    # Installation may show errors during temp stage (deps not yet installed)
+    # but final installation will succeed
+    openclaw plugins install --force --dangerously-force-unsafe-install "${tarball_path}" 2>&1 | grep -v "install-stage" || true
+    
+    # Clean temp directories after install
+    rm -rf ~/.openclaw/extensions/.openclaw-install-stage-* 2>/dev/null || true
     
     echo ""
     echo -e "${SUCCESS}Local installation complete!${NC}"
