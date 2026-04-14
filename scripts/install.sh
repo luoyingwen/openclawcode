@@ -92,6 +92,17 @@ install_link() {
 }
 
 show_publish_info() {
+    echo -e "${BOLD}Local testing (recommended before publishing)${NC}"
+    echo ""
+    echo -e "${INFO}Test locally before publishing:${NC}"
+    echo -e "${SUCCESS}  bash scripts/install.sh local${NC}"
+    echo -e "${INFO}  - Creates tarball and installs to ~/.openclaw/extensions/${NC}"
+    echo -e "${INFO}  - Use for integration testing${NC}"
+    echo ""
+    echo -e "${SUCCESS}  bash scripts/install.sh link${NC}"
+    echo -e "${INFO}  - Links source directory (--link mode)${NC}"
+    echo -e "${INFO}  - Changes reflect immediately after rebuild${NC}"
+    echo ""
     echo -e "${BOLD}Publishing to npm${NC}"
     echo ""
     echo -e "${INFO}Steps to publish:${NC}"
