@@ -1185,31 +1185,33 @@ function schedulePromptFollowUp(params: {
 }
 
 function formatProjects(projects: ProjectRecord[], state: PluginState): string {
-  return [
-    "# OpenCode Projects",
-    "",
-    ...projects.map((project, index) => {
-      const isCurrent =
-        state.currentProject &&
-        normalizePathForMatch(state.currentProject.worktree) === normalizePathForMatch(project.worktree);
-      const prefix = isCurrent ? "- **" : "- ";
-      const suffix = isCurrent ? "**" : "";
-      return `${prefix}${index + 1}. ${project.name ?? path.basename(project.worktree)}${suffix}\n  - worktree: \`${project.worktree}\``;
-    }),
-  ].join("\n");
+  const limit = 10;
+  const displayed = projects.slice(0, limit);
+  let message = `# Projects (${displayed.length}/${projects.length})\n\n`;
+  for (let i = 0; i < displayed.length; i++) {
+    const project = displayed[i];
+    const isCurrent =
+      state.currentProject &&
+      normalizePathForMatch(state.currentProject.worktree) === normalizePathForMatch(project.worktree);
+    const marker = isCurrent ? " ✅" : "";
+    message += `${i + 1}. **${project.name ?? path.basename(project.worktree)}**${marker}\n   \`${project.worktree}\`\n`;
+  }
+  message += "\nUse `/projects <number>` to select a project.";
+  return message;
 }
 
 function formatSessions(sessions: SessionRecord[], state: PluginState): string {
-  return [
-    "# OpenCode Sessions",
-    "",
-    ...sessions.map((session, index) => {
-      const isCurrent = state.currentSession?.id === session.id;
-      const prefix = isCurrent ? "- **" : "- ";
-      const suffix = isCurrent ? "**" : "";
-      return `${prefix}${index + 1}. ${session.title}${suffix}\n  - id: \`${session.id}\``;
-    }),
-  ].join("\n");
+  const limit = 10;
+  const displayed = sessions.slice(0, limit);
+  let message = `# Sessions (${displayed.length}/${sessions.length})\n\n`;
+  for (let i = 0; i < displayed.length; i++) {
+    const session = displayed[i];
+    const isCurrent = state.currentSession?.id === session.id;
+    const marker = isCurrent ? " ✅" : "";
+    message += `${i + 1}. **${session.title}**${marker}\n   \`${session.id}\`\n`;
+  }
+  message += "\nUse `/sessions <number>` to select a session.";
+  return message;
 }
 
 function formatCommands(commands: CommandRecord[]): string {
