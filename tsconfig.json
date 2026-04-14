@@ -12,6 +12,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["src/openclaw-plugin.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
 }
