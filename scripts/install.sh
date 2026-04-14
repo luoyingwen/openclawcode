@@ -21,13 +21,74 @@ check_build() {
     fi
 }
 
-check_npm_auth() {
-    if ! npm whoami 2>&1 | grep -q "@"; then
-        echo -e "${WARN}Not logged in to npm${NC}"
-        echo -e "${INFO}Run: npm login${NC}"
-        return 1
+check_openclaw() {
+    if ! command -v openclaw &> /dev/null; then
+        echo -e "${ERROR}OpenClaw CLI not found in PATH${NC}"
+        echo -e "${INFO}Install OpenClaw first: npm install -g openclaw${NC}"
+        exit 1
     fi
-    return 0
+}
+
+create_tarball() {
+    echo -e "${BOLD}Creating npm tarball...${NC}" >&2
+    cd "${PLUGIN_DIR}"
+    local output
+    output=$(npm pack 2>&1)
+    local tarball
+    tarball=$(echo "${output}" | grep -E "^[a-zA-Z0-9].*\.tgz$" | tail -1)
+    if [[ -z "${tarball}" ]]; then
+        echo -e "${ERROR}Failed to create tarball${NC}" >&2
+        exit 1
+    fi
+    echo -e "${SUCCESS}Created: ${tarball}${NC}" >&2
+    echo "${tarball}"
+}
+
+install_local() {
+    echo -e "${BOLD}Installing plugin locally for testing...${NC}"
+    echo ""
+    
+    check_build
+    check_openclaw
+    
+    local tarball_filename
+    tarball_filename=$(create_tarball)
+    local tarball_path="${PLUGIN_DIR}/${tarball_filename}"
+    
+    echo ""
+    echo -e "${INFO}Installing from tarball: ${tarball_path}${NC}"
+    echo -e "${WARN}Plugin contains child_process (process manager) - using --dangerously-force-unsafe-install${NC}"
+    openclaw plugins install --force --dangerously-force-unsafe-install "${tarball_path}"
+    
+    echo ""
+    echo -e "${SUCCESS}Local installation complete!${NC}"
+    echo ""
+    echo -e "${BOLD}Enable the plugin:${NC}"
+    echo -e "${INFO}  openclaw config set plugins.entries.${PLUGIN_ID}.enabled true${NC}"
+    echo ""
+    echo -e "${BOLD}Optional configuration:${NC}"
+    echo -e "${INFO}  openclaw config set plugins.entries.${PLUGIN_ID}.config.opencodeBaseUrl \"http://localhost:4096\"${NC}"
+    
+    rm -f "${tarball_path}"
+}
+
+install_link() {
+    echo -e "${BOLD}Linking plugin locally for testing...${NC}"
+    echo ""
+    
+    check_build
+    check_openclaw
+    
+    echo -e "${INFO}Linking from: ${PLUGIN_DIR}${NC}"
+    echo -e "${WARN}Plugin contains child_process - using --dangerously-force-unsafe-install${NC}"
+    openclaw plugins install --link --force --dangerously-force-unsafe-install "${PLUGIN_DIR}"
+    
+    echo ""
+    echo -e "${SUCCESS}Linked installation complete!${NC}"
+    echo -e "${WARN}Note: Linked plugins use live source - rebuild to update${NC}"
+    echo ""
+    echo -e "${BOLD}Enable the plugin:${NC}"
+    echo -e "${INFO}  openclaw config set plugins.entries.${PLUGIN_ID}.enabled true${NC}"
 }
 
 show_publish_info() {
@@ -83,6 +144,7 @@ run_standalone() {
 dry_run_publish() {
     echo -e "${BOLD}Dry run: checking what would be published${NC}"
     echo ""
+    cd "${PLUGIN_DIR}"
     npm pack --dry-run
 }
 
@@ -93,14 +155,16 @@ show_help() {
     echo ""
     echo "Commands:"
     echo "  info       Show publish and install instructions (default)"
+    echo "  local      Install locally from tarball for testing"
+    echo "  link       Link locally (--link mode, live source)"
     echo "  publish    Dry run npm pack to check package contents"
     echo "  standalone Run as standalone Telegram bot"
     echo "  help       Show this help message"
     echo ""
-    echo -e "${BOLD}Workflow:${NC}"
-    echo "  1. Build: npm run build"
-    echo "  2. Publish: npm publish --access public"
-    echo "  3. Users install: openclaw plugins install ${PACKAGE_NAME}"
+    echo -e "${BOLD}Recommended workflow:${NC}"
+    echo "  1. Build:    bash scripts/build.sh"
+    echo "  2. Test:     bash scripts/install.sh local"
+    echo "  3. Publish:  npm publish --access public"
 }
 
 main() {
@@ -111,6 +175,12 @@ main() {
             check_build
             show_publish_info
             show_install_info
+            ;;
+        local)
+            install_local
+            ;;
+        link)
+            install_link
             ;;
         publish)
             check_build
