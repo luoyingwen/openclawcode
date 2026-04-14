@@ -36,7 +36,6 @@ import {
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUILD_INFO_PATH = path.join(PACKAGE_ROOT, "dist", "build-info.json");
 const DINGTALK_MESSAGE_LIMIT = 20_000;
-const HELLO_DELAY_MS = 30_000;
 const STATE_DIRNAME = "openclawcode";
 const STATE_FILENAME = "state.json";
 const ENTER_OPENCODE_COMMAND = "进入opencode";
@@ -125,9 +124,6 @@ type PluginState = {
   currentProject?: ProjectState;
   currentSession?: SessionState;
   interceptMode?: InterceptModeState;
-  ttsEnabled?: boolean;
-  helloCount: number;
-  lastHelloAt?: string;
   currentAgent?: string;
 };
 
@@ -353,7 +349,7 @@ function explainScopeMismatch(config: PluginConfig, ctx: ScopeContext): string |
 }
 
 function createDefaultState(): PluginState {
-  return { helloCount: 0, ttsEnabled: false };
+  return {};
 }
 
 function resolvePluginStateFile(): string {
@@ -370,12 +366,6 @@ function loadPluginState(logger: PluginLogger): PluginState {
     }
 
     return {
-      helloCount:
-        typeof loaded.helloCount === "number" && Number.isFinite(loaded.helloCount)
-          ? loaded.helloCount
-          : 0,
-      lastHelloAt: normalizeText(loaded.lastHelloAt),
-      ttsEnabled: loaded.ttsEnabled === true,
       currentProject:
         loaded.currentProject && typeof loaded.currentProject === "object"
           ? {
@@ -401,6 +391,7 @@ function loadPluginState(logger: PluginLogger): PluginState {
               enteredAt: normalizeText(loaded.interceptMode.enteredAt),
             }
           : undefined,
+      currentAgent: normalizeText(loaded.currentAgent),
     };
   } catch (error) {
     logger.warn(`[OpenClawCode] failed to load state file=${filePath}: ${String(error)}`);
@@ -820,29 +811,6 @@ function collectResponseText(parts: ResponseTextPart[]): string {
     .trim();
 }
 
-function scheduleHelloDelay(
-  api: OpenClawPluginApi,
-  route: FollowUpRoute,
-  state: PluginState,
-  logger: PluginLogger,
-): void {
-  const timer = setTimeout(() => {
-    void sendFollowUpMessage(
-      api,
-      route,
-      {
-        text: `30s delay message (helloCount=${state.helloCount})`,
-        format: "text",
-      },
-      logger,
-    ).catch((error) => {
-      logger.error(`[OpenClawCode] delayed /hello message failed: ${String(error)}`);
-    });
-  }, HELLO_DELAY_MS);
-
-  timer.unref?.();
-}
-
 async function fetchProjects(client: ReturnType<typeof createClient>): Promise<ProjectRecord[]> {
   const { data, error } = await client.project.list();
   if (error || !data) {
@@ -1066,9 +1034,6 @@ function formatHelpText(): string {
     "- /stop - Cancel active flow or pending permission",
     "- /permission - Show pending permission request or risk status",
     "- /commands - List project commands exposed by OpenCode",
-    "- /tts - Toggle the plugin TTS flag",
-    "- /ping - Return Pong!",
-    "- /hello - Return a demo reply and send a delayed follow-up",
     "",
     "**Permission Replies:**",
     "- /1 - Allow once",
@@ -1315,26 +1280,8 @@ async function handleCommand(params: {
 
   const client = createClient(config);
 
-  if (command.name === "ping") {
-    return "Pong!";
-  }
-
-  if (command.name === "hello") {
-    state.helloCount += 1;
-    state.lastHelloAt = new Date().toISOString();
-    await savePluginState(state, logger);
-    scheduleHelloDelay(api, route, state, logger);
-    return `Hello from OpenClawCode. helloCount=${state.helloCount}`;
-  }
-
   if (command.name === "help") {
     return formatHelpText();
-  }
-
-  if (command.name === "tts") {
-    state.ttsEnabled = !state.ttsEnabled;
-    await savePluginState(state, logger);
-    return `OpenClawCode TTS flag is now ${state.ttsEnabled ? "enabled" : "disabled"}.`;
   }
 
   if (command.name === "status") {
@@ -1355,8 +1302,6 @@ async function handleCommand(params: {
         `- Current session: ${state.currentSession ? `**${state.currentSession.title}** [\`${state.currentSession.id}\`]` : "not selected"}`,
         `- Current session status: ${currentSessionStatus ?? "unknown"}`,
         `- Intercept mode: ${formatInterceptModeStatus(state)}`,
-        `- TTS flag: ${state.ttsEnabled ? "on" : "off"}`,
-        `- Hello count: ${state.helloCount}`,
       ].join("\n");
     } catch (error) {
       return `Failed to read OpenCode status: ${String(error)}`;
