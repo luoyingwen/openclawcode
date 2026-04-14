@@ -13,7 +13,7 @@
   },
   "openclaw": {
     "extensions": [
-      "./dist/openclaw-plugin.js"
+      "./src/openclaw-plugin.ts"
     ],
     "plugin": {
       "id": "openclawcode",
