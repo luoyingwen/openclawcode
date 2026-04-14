@@ -86,8 +86,8 @@ export const config = {
     username: getEnvVar("OPENCODE_SERVER_USERNAME", false) || "opencode",
     password: getEnvVar("OPENCODE_SERVER_PASSWORD", false),
     model: {
-      provider: getEnvVar("OPENCODE_MODEL_PROVIDER", true), // Required
-      modelId: getEnvVar("OPENCODE_MODEL_ID", true), // Required
+      provider: getEnvVar("OPENCODE_MODEL_PROVIDER", false),
+      modelId: getEnvVar("OPENCODE_MODEL_ID", false),
     },
   },
   server: {

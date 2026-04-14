@@ -6,6 +6,32 @@ import type { OpenClawPluginApi, PluginLogger } from "openclaw/plugin-sdk/core";
 import { loadJsonFile, writeJsonFileAtomically } from "openclaw/plugin-sdk/json-store";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
+import {
+  handleTaskCommand,
+  handleTaskTextInput,
+  isUserInTaskFlow,
+  clearTaskState,
+} from "./task/task.js";
+import {
+  handleTaskListCommand,
+  handleTaskListTextInput,
+  isUserInTaskListFlow,
+  clearOpenClawCodeTaskListState,
+} from "./task/tasklist.js";
+import {
+  setCurrentProject,
+  setCurrentSession,
+  setCurrentModel,
+} from "./settings/manager.js";
+import { getStoredModel, getModelSelectionLists } from "./model/manager.js";
+import type { FavoriteModel } from "./model/types.js";
+import { listScheduledTasks } from "./scheduled-task/store.js";
+import type { PermissionRequest } from "./permission/types.js";
+import {
+  recordProactiveRisk,
+  getProactiveRisk,
+  isProactivePermissionError,
+} from "./task/proactive-risk-registry.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUILD_INFO_PATH = path.join(PACKAGE_ROOT, "dist", "build-info.json");
@@ -15,6 +41,44 @@ const STATE_DIRNAME = "openclawcode";
 const STATE_FILENAME = "state.json";
 const ENTER_OPENCODE_COMMAND = "进入opencode";
 const LEAVE_OPENCODE_COMMAND = "离开opencode";
+
+const PERMISSION_EMOJI_MAP: Record<string, string> = {
+  bash: "💻",
+  edit: "✏️",
+  write: "📝",
+  read: "📖",
+  webfetch: "🌐",
+  websearch: "🔍",
+  glob: "📁",
+  grep: "🔎",
+  list: "📋",
+  task: "📌",
+  lsp: "🔧",
+  external_directory: "📂",
+};
+
+const pendingPermissionRequests = new Map<string, PermissionRequest>();
+const activeSessionForPermission = new Map<string, { sessionId: string; directory: string }>();
+
+function storePermissionRequest(route: FollowUpRoute, request: PermissionRequest): void {
+  const key = deriveUserIdFromRoute(route);
+  pendingPermissionRequests.set(key, request);
+}
+
+function getPendingPermissionRequest(route: FollowUpRoute): PermissionRequest | null {
+  const key = deriveUserIdFromRoute(route);
+  return pendingPermissionRequests.get(key) ?? null;
+}
+
+function clearPendingPermissionRequest(route: FollowUpRoute): void {
+  const key = deriveUserIdFromRoute(route);
+  pendingPermissionRequests.delete(key);
+}
+
+function hasPendingPermissionRequest(route: FollowUpRoute): boolean {
+  const key = deriveUserIdFromRoute(route);
+  return pendingPermissionRequests.has(key);
+}
 
 type BuildInfoRecord = {
   version?: unknown;
@@ -51,6 +115,12 @@ type InterceptModeState = {
   enteredAt?: string;
 };
 
+type AgentRecord = {
+  name: string;
+  mode?: string;
+  hidden?: boolean;
+};
+
 type PluginState = {
   currentProject?: ProjectState;
   currentSession?: SessionState;
@@ -58,6 +128,7 @@ type PluginState = {
   ttsEnabled?: boolean;
   helloCount: number;
   lastHelloAt?: string;
+  currentAgent?: string;
 };
 
 type ScopeContext = {
@@ -347,6 +418,20 @@ async function savePluginState(state: PluginState, logger: PluginLogger): Promis
   }
 }
 
+function deriveUserIdFromRoute(route: FollowUpRoute): string {
+  const parts = [route.channelId ?? "unknown", route.accountId ?? "unknown", route.conversationId ?? "unknown"];
+  return parts.join(":");
+}
+
+function syncStateToSettings(state: PluginState): void {
+  if (state.currentProject) {
+    setCurrentProject(state.currentProject);
+  }
+  if (state.currentSession) {
+    setCurrentSession(state.currentSession);
+  }
+}
+
 function createClient(config: PluginConfig) {
   const username = config.opencodeUsername ?? "opencode";
   const password = config.opencodePassword;
@@ -521,6 +606,20 @@ async function streamPromptProgress(params: {
         break;
       }
 
+      const eventType = normalizeText((event as { type?: string }).type);
+      if (eventType === "permission.asked") {
+        const request = (event as { properties?: PermissionRequest }).properties;
+        if (request && request.sessionID === session.id) {
+          storePermissionRequest(route, request);
+          const emoji = PERMISSION_EMOJI_MAP[request.permission] || "🔐";
+          const patterns = request.patterns.join("\n");
+          const message = `🔐 **Permission Request**\n\n**Type:** ${emoji} ${request.permission}\n\n**Patterns:**\n\`\`\`\n${patterns}\n\`\`\`\n\nPlease reply with:\n**/1** - Allow once\n**/2** - Always allow\n**/3** - Reject`;
+          await sendFollowUpMessage(api, route, { text: message }, logger);
+          logger.info(`[OpenClawCode] Permission request sent: requestID=${request.id}, type=${request.permission}`);
+        }
+        continue;
+      }
+
       const message = resolvePromptProgressMessage(event, tracker);
       if (!message) {
         continue;
@@ -600,59 +699,87 @@ async function sendFollowUpMessage(
     return;
   }
 
-  if (message.format === "markdown" && outbound?.sendPayload) {
-    await outbound.sendPayload({
-      cfg: api.config,
-      to: route.conversationId,
-      text,
-      payload: { text },
-      accountId: route.accountId,
-    });
-    return;
-  }
+  const sendOptions = {
+    cfg: api.config,
+    to: route.conversationId,
+    accountId: route.accountId,
+  };
 
-  if (message.format === "text" && outbound?.sendText) {
+  try {
+    if (message.format === "markdown" && outbound?.sendPayload) {
+      await outbound.sendPayload({
+        ...sendOptions,
+        text,
+        payload: { text },
+      });
+      return;
+    }
+
+    if (message.format === "text" && outbound?.sendText) {
+      const chunkLimit = resolveFollowUpChunkLimit(outbound, api, route);
+      const chunks = splitOutboundMessageText(text, chunkLimit);
+      for (const chunk of chunks) {
+        await outbound.sendText({
+          ...sendOptions,
+          text: chunk,
+        });
+      }
+      return;
+    }
+
+    if (outbound?.sendPayload) {
+      await outbound.sendPayload({
+        ...sendOptions,
+        text,
+        payload: { text },
+      });
+      return;
+    }
+
+    if (!outbound?.sendText) {
+      logger.warn(
+        `[OpenClawCode] follow-up skipped: outbound adapter unavailable for channel=${route.channelId}`,
+      );
+      return;
+    }
+
     const chunkLimit = resolveFollowUpChunkLimit(outbound, api, route);
     const chunks = splitOutboundMessageText(text, chunkLimit);
     for (const chunk of chunks) {
       await outbound.sendText({
-        cfg: api.config,
-        to: route.conversationId,
+        ...sendOptions,
         text: chunk,
-        accountId: route.accountId,
       });
     }
-    return;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (isProactivePermissionError(errorMessage)) {
+      const accountId = route.accountId ?? "unknown";
+      const targetId = route.conversationId;
+      recordProactiveRisk({
+        accountId,
+        targetId,
+        level: "high",
+        reason: errorMessage,
+        source: "followup_send",
+      });
+      logger.warn(
+        `[OpenClawCode] Permission error detected for ${accountId}:${targetId}. Recorded proactive risk.`,
+      );
+    } else {
+      logger.error(`[OpenClawCode] follow-up send error: ${errorMessage}`);
+    }
   }
+}
 
-  if (outbound?.sendPayload) {
-    await outbound.sendPayload({
-      cfg: api.config,
-      to: route.conversationId,
-      text,
-      payload: { text },
-      accountId: route.accountId,
-    });
-    return;
+function shouldSkipProactiveSend(route: FollowUpRoute): boolean {
+  const accountId = route.accountId ?? "unknown";
+  const targetId = route.conversationId ?? "unknown";
+  const risk = getProactiveRisk(accountId, targetId);
+  if (risk) {
+    return risk.level === "high" || risk.level === "medium";
   }
-
-  if (!outbound?.sendText) {
-    logger.warn(
-      `[OpenClawCode] follow-up skipped: outbound adapter unavailable for channel=${route.channelId}`,
-    );
-    return;
-  }
-
-  const chunkLimit = resolveFollowUpChunkLimit(outbound, api, route);
-  const chunks = splitOutboundMessageText(text, chunkLimit);
-  for (const chunk of chunks) {
-    await outbound.sendText({
-      cfg: api.config,
-      to: route.conversationId,
-      text: chunk,
-      accountId: route.accountId,
-    });
-  }
+  return false;
 }
 
 function routeToInterceptMode(route: FollowUpRoute): InterceptModeState {
@@ -892,6 +1019,29 @@ async function fetchCommandList(
   );
 }
 
+async function fetchAgents(
+  client: ReturnType<typeof createClient>,
+  project: ProjectState | undefined,
+): Promise<AgentRecord[]> {
+  const { data, error } = await client.app.agents(
+    project ? { directory: project.worktree } : undefined,
+  );
+  if (error || !data) {
+    throw error ?? new Error("Failed to fetch OpenCode agents");
+  }
+  return (data as AgentRecord[]).filter(
+    (agent) => !agent.hidden && (agent.mode === "primary" || agent.mode === "all"),
+  );
+}
+
+function formatAgents(agents: AgentRecord[], currentAgent: string | undefined): string {
+  const lines = agents.map((agent, index) => {
+    const marker = agent.name === currentAgent ? " ✅" : "";
+    return `${index + 1}. ${agent.name}${marker}`;
+  });
+  return ["# Available Agents", "", ...lines, "", `Current: ${currentAgent ?? "build"}`].join("\n");
+}
+
 function formatHelpText(): string {
   return [
     "# OpenClawCode Channel Commands",
@@ -904,12 +1054,26 @@ function formatHelpText(): string {
     "- /projects <index> - Select the indexed project",
     "- /sessions - List sessions in the current project",
     "- /sessions <index> - Select the indexed session",
+    "- /agents - List available agents",
+    "- /agent <index> - Select the indexed agent",
+    "- /models - List available models",
+    "- /model <index> - Select the indexed model",
     "- /new - Create and select a new OpenCode session",
+    "- /rename <title> - Rename the current session",
     "- /abort - Abort the current OpenCode session",
+    "- /task - Start scheduled task creation flow",
+    "- /tasklist - View and manage scheduled tasks",
+    "- /stop - Cancel active flow or pending permission",
+    "- /permission - Show pending permission request or risk status",
     "- /commands - List project commands exposed by OpenCode",
     "- /tts - Toggle the plugin TTS flag",
     "- /ping - Return Pong!",
     "- /hello - Return a demo reply and send a delayed follow-up",
+    "",
+    "**Permission Replies:**",
+    "- /1 - Allow once",
+    "- /2 - Always allow",
+    "- /3 - Reject",
     "",
     "All commands except /进入opencode and /离开opencode only work after intercept mode is enabled.",
   ].join("\n");
@@ -1099,6 +1263,51 @@ async function handleCommand(params: {
   content: string;
 }): Promise<string | undefined> {
   const { api, logger, config, state, route, content } = params;
+
+  const trimmedContent = content.trim();
+  if (["/1", "/2", "/3"].includes(trimmedContent)) {
+    const replyMap: Record<string, "once" | "always" | "reject"> = {
+      "/1": "once",
+      "/2": "always",
+      "/3": "reject",
+    };
+    const reply = replyMap[trimmedContent];
+    if (hasPendingPermissionRequest(route)) {
+      const request = getPendingPermissionRequest(route);
+      if (!request) {
+        return "No pending permission request.";
+      }
+      const session = state.currentSession;
+      if (!session) {
+        clearPendingPermissionRequest(route);
+        return "No active session. Permission request cleared.";
+      }
+      try {
+        const client = createClient(config);
+        const { error } = await client.permission.reply({
+          requestID: request.id,
+          directory: session.directory,
+          reply,
+        });
+        if (error) {
+          logger.error(`[OpenClawCode] Permission reply failed: ${String(error)}`);
+          return `Failed to send permission reply: ${String(error)}`;
+        }
+        clearPendingPermissionRequest(route);
+        const replyLabels: Record<string, string> = {
+          once: "✅ Allowed once",
+          always: "✅ Always allowed",
+          reject: "❌ Rejected",
+        };
+        return replyLabels[reply];
+      } catch (error) {
+        logger.error(`[OpenClawCode] Permission reply error: ${String(error)}`);
+        return `Permission reply error: ${String(error)}`;
+      }
+    }
+    return "⚠️ No pending permission request.";
+  }
+
   const command = parseSlashCommand(content);
   if (!command) {
     return undefined;
@@ -1261,6 +1470,164 @@ async function handleCommand(params: {
     }
   }
 
+  if (command.name === "agents") {
+    try {
+      const project = state.currentProject;
+      const agents = await fetchAgents(client, project);
+      if (agents.length === 0) {
+        return "No agents available from OpenCode.";
+      }
+
+      return formatAgents(agents, state.currentAgent);
+    } catch (error) {
+      return `Failed to fetch agents from OpenCode: ${String(error)}`;
+    }
+  }
+
+  if (command.name === "agent") {
+    try {
+      const project = state.currentProject;
+      const agents = await fetchAgents(client, project);
+      if (agents.length === 0) {
+        return "No agents available from OpenCode.";
+      }
+
+      const args = splitArgs(command.args);
+      if (args.length === 0) {
+        return "Usage: /agent <number>. Use /agents to list available agents.";
+      }
+
+      const index = Number(args[0]);
+      if (!Number.isInteger(index) || index < 1 || index > agents.length) {
+        return `Invalid agent index. Use /agents to inspect the current list.`;
+      }
+
+      const selected = agents[index - 1];
+      state.currentAgent = selected.name;
+      await savePluginState(state, logger);
+      return `Selected agent ${selected.name}.`;
+    } catch (error) {
+      return `Failed to select agent: ${String(error)}`;
+    }
+  }
+
+  if (command.name === "rename") {
+    if (!state.currentSession) {
+      return "No session is selected. Use /sessions to select a session first.";
+    }
+    const args = splitArgs(command.args);
+    if (args.length === 0) {
+      return `Current session title: "${state.currentSession.title}". Use /rename <new title> to rename.`;
+    }
+    const newTitle = command.args.trim();
+    if (!newTitle || newTitle.length < 1) {
+      return "New title must not be empty.";
+    }
+    try {
+      const { error } = await client.session.update({
+        sessionID: state.currentSession.id,
+        directory: state.currentSession.directory,
+        title: newTitle,
+      });
+      if (error) {
+        return `Failed to rename session: ${String(error)}`;
+      }
+      state.currentSession.title = newTitle;
+      await savePluginState(state, logger);
+      return `Session renamed to "${newTitle}".`;
+    } catch (error) {
+      return `Failed to rename session: ${String(error)}`;
+    }
+  }
+
+  if (command.name === "task") {
+    syncStateToSettings(state);
+    const userId = deriveUserIdFromRoute(route);
+    return handleTaskCommand(userId);
+  }
+
+  if (command.name === "tasklist") {
+    syncStateToSettings(state);
+    const userId = deriveUserIdFromRoute(route);
+    return handleTaskListCommand(userId);
+  }
+
+  if (command.name === "models") {
+    try {
+      const lists = await getModelSelectionLists();
+      const lines: string[] = ["# Available Models"];
+      if (lists.favorites.length > 0) {
+        lines.push("", "**Favorites:**");
+        lists.favorites.forEach((m: FavoriteModel, i: number) => lines.push(`${i + 1}. ${m.providerID}/${m.modelID}`));
+      }
+      if (lists.recent.length > 0) {
+        lines.push("", "**Recent:**");
+        lists.recent.forEach((m: FavoriteModel, i: number) => lines.push(`${i + 1}. ${m.providerID}/${m.modelID}`));
+      }
+      const current = getStoredModel();
+      lines.push("", `**Current:** ${current ? `${current.providerID}/${current.modelID}` : "none"}`);
+      return lines.join("\n");
+    } catch (error) {
+      return `Failed to fetch models: ${String(error)}`;
+    }
+  }
+
+  if (command.name === "model") {
+    try {
+      const lists = await getModelSelectionLists();
+      const allModels: FavoriteModel[] = [...lists.favorites, ...lists.recent];
+      if (allModels.length === 0) {
+        return "No models available. Use /models to check.";
+      }
+      const args = splitArgs(command.args);
+      if (args.length === 0) {
+        return "Usage: /model <number>. Use /models to list available models.";
+      }
+      const index = Number(args[0]);
+      if (!Number.isInteger(index) || index < 1 || index > allModels.length) {
+        return `Invalid model index. Use /models to inspect the list (max ${allModels.length}).`;
+      }
+      const selected = allModels[index - 1];
+      setCurrentModel(selected);
+      return `Selected model ${selected.providerID}/${selected.modelID}.`;
+    } catch (error) {
+      return `Failed to select model: ${String(error)}`;
+    }
+  }
+
+  if (command.name === "stop") {
+    const userId = deriveUserIdFromRoute(route);
+    if (isUserInTaskFlow(userId)) {
+      clearTaskState(userId);
+      return "Task creation flow cancelled.";
+    }
+    if (isUserInTaskListFlow(userId)) {
+      clearOpenClawCodeTaskListState(userId);
+      return "Task list view cancelled.";
+    }
+    if (hasPendingPermissionRequest(route)) {
+      clearPendingPermissionRequest(route);
+      return "Pending permission request cleared.";
+    }
+    return "No active flow to stop. Use /abort to abort a session.";
+  }
+
+  if (command.name === "permission") {
+    const request = getPendingPermissionRequest(route);
+    if (!request) {
+      const accountId = route.accountId ?? "unknown";
+      const targetId = route.conversationId ?? "unknown";
+      const risk = getProactiveRisk(accountId, targetId);
+      if (risk) {
+        return `No pending permission request, but proactive risk detected:\n\n**Level:** ${risk.level}\n**Reason:** ${risk.reason}\n**Source:** ${risk.source}\n\nSend a message to clear the risk and restore proactive messaging capability.`;
+      }
+      return "No pending permission request. Reply /1, /2, or /3 when a permission prompt appears.";
+    }
+    const emoji = PERMISSION_EMOJI_MAP[request.permission] || "🔐";
+    const patterns = request.patterns.join("\n");
+    return `🔐 **Pending Permission Request**\n\n**Request ID:** ${request.id}\n**Type:** ${emoji} ${request.permission}\n\n**Patterns:**\n\`\`\`\n${patterns}\n\`\`\`\n\nReply with:\n**/1** - Allow once\n**/2** - Always allow\n**/3** - Reject`;
+  }
+
   return undefined;
 }
 
@@ -1373,6 +1740,25 @@ export default definePluginEntry({
         const isIntercepting = isInterceptModeActiveForRoute(state, route);
         if (!isIntercepting) {
           return undefined;
+        }
+
+        const userId = deriveUserIdFromRoute(route);
+        syncStateToSettings(state);
+
+        if (isUserInTaskFlow(userId)) {
+          const taskReply = await handleTaskTextInput(userId, content);
+          if (taskReply !== null) {
+            await savePluginState(state, logger);
+            return { handled: true, text: taskReply };
+          }
+        }
+
+        if (isUserInTaskListFlow(userId)) {
+          const taskListReply = await handleTaskListTextInput(userId, content);
+          if (taskListReply !== null) {
+            await savePluginState(state, logger);
+            return { handled: true, text: taskListReply };
+          }
         }
 
         const client = createClient(config);

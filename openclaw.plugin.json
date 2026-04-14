@@ -3,6 +3,7 @@
   "name": "OpenClawCode",
   "description": "OpenClaw plugin for OpenCode - intercept channel messages and route to OpenCode server",
   "enabledByDefault": false,
+  "installDependencies": true,
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
