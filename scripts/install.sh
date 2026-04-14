@@ -12,7 +12,7 @@ ERROR='\033[38;2;230;57;70m'
 NC='\033[0m'
 
 PLUGIN_ID="openclawcode"
-PACKAGE_NAME="@grinev/opencode-telegram-bot"
+PACKAGE_NAME="@grinev/openclaw-opencode-plugin"
 
 check_build() {
     if [[ ! -f "${PLUGIN_DIR}/dist/openclaw-plugin.js" ]]; then
@@ -51,7 +51,6 @@ install_local() {
     check_build
     check_openclaw
     
-    # Clean any stale temp directories from previous installs
     rm -rf ~/.openclaw/extensions/.openclaw-install-stage-* 2>/dev/null || true
     
     local tarball_filename
@@ -62,11 +61,8 @@ install_local() {
     echo -e "${INFO}Installing from tarball: ${tarball_path}${NC}"
     echo -e "${WARN}Plugin contains child_process - using --dangerously-force-unsafe-install${NC}"
     
-    # Installation may show errors during temp stage (deps not yet installed)
-    # but final installation will succeed
     openclaw plugins install --force --dangerously-force-unsafe-install "${tarball_path}" 2>&1 | grep -v "install-stage" || true
     
-    # Clean temp directories after install
     rm -rf ~/.openclaw/extensions/.openclaw-install-stage-* 2>/dev/null || true
     
     echo ""
@@ -88,9 +84,13 @@ install_link() {
     check_build
     check_openclaw
     
+    rm -rf ~/.openclaw/extensions/.openclaw-install-stage-* 2>/dev/null || true
+    
     echo -e "${INFO}Linking from: ${PLUGIN_DIR}${NC}"
     echo -e "${WARN}Plugin contains child_process - using --dangerously-force-unsafe-install${NC}"
     openclaw plugins install --link --force --dangerously-force-unsafe-install "${PLUGIN_DIR}"
+    
+    rm -rf ~/.openclaw/extensions/.openclaw-install-stage-* 2>/dev/null || true
     
     echo ""
     echo -e "${SUCCESS}Linked installation complete!${NC}"
@@ -100,91 +100,49 @@ install_link() {
     echo -e "${INFO}  openclaw config set plugins.entries.${PLUGIN_ID}.enabled true${NC}"
 }
 
-show_publish_info() {
-    echo -e "${BOLD}Local testing (recommended before publishing)${NC}"
+show_info() {
+    check_build
+    
+    echo -e "${BOLD}OpenClawCode Plugin${NC}"
     echo ""
-    echo -e "${INFO}Test locally before publishing:${NC}"
+    echo -e "${INFO}OpenCode integration for OpenClaw channels${NC}"
+    echo ""
+    echo -e "${BOLD}Local testing:${NC}"
     echo -e "${SUCCESS}  bash scripts/install.sh local${NC}"
-    echo -e "${INFO}  - Creates tarball and installs to ~/.openclaw/extensions/${NC}"
-    echo -e "${INFO}  - Use for integration testing${NC}"
+    echo -e "${INFO}  - Install from tarball for integration testing${NC}"
     echo ""
     echo -e "${SUCCESS}  bash scripts/install.sh link${NC}"
-    echo -e "${INFO}  - Links source directory (--link mode)${NC}"
-    echo -e "${INFO}  - Changes reflect immediately after rebuild${NC}"
+    echo -e "${INFO}  - Link source directory (--link mode)${NC}"
     echo ""
-    echo -e "${BOLD}Publishing to npm${NC}"
+    echo -e "${BOLD}Publishing to npm:${NC}"
+    echo -e "${INFO}  npm publish --access public${NC}"
     echo ""
-    echo -e "${INFO}Steps to publish:${NC}"
-    echo -e "${INFO}1. Build: npm run build${NC}"
-    echo -e "${INFO}2. Login: npm login${NC}"
-    echo -e "${INFO}3. Publish: npm publish --access public${NC}"
-    echo ""
-    echo -e "${BOLD}Or use npm release scripts:${NC}"
-    echo -e "${INFO}  npm run release:prepare  - Prepare stable release${NC}"
-    echo -e "${INFO}  npm run release:rc       - Prepare RC release${NC}"
-}
-
-show_install_info() {
-    echo ""
-    echo -e "${BOLD}Installing from npm${NC}"
-    echo ""
-    echo -e "${INFO}After publishing, users can install:${NC}"
+    echo -e "${BOLD}Installing from npm:${NC}"
     echo -e "${SUCCESS}  openclaw plugins install ${PACKAGE_NAME}${NC}"
     echo ""
-    echo -e "${BOLD}Configuration (all optional, have defaults):${NC}"
-    echo -e "${INFO}  openclaw config set plugins.entries.${PLUGIN_ID}.enabled true${NC}"
-    echo -e "${INFO}  openclaw config set plugins.entries.${PLUGIN_ID}.config.opencodeBaseUrl \"http://localhost:4096\"${NC}"
-    echo ""
-    echo -e "${BOLD}Config options:${NC}"
-    echo -e "${INFO}  - opencodeBaseUrl: OpenCode server URL (default: http://localhost:4096)${NC}"
-    echo -e "${INFO}  - opencodeUsername: Auth username${NC}"
-    echo -e "${INFO}  - opencodePassword: Auth password${NC}"
-    echo -e "${INFO}  - channels: Channel IDs to intercept (empty = all)${NC}"
-    echo -e "${INFO}  - accountIds: Account IDs to intercept (empty = all)${NC}"
-    echo -e "${INFO}  - conversationIds: Conversation IDs (empty = all)${NC}"
-    echo -e "${INFO}  - defaultProjectDirectory: Default project path${NC}"
-}
-
-run_standalone() {
-    echo -e "${BOLD}Running as standalone Telegram bot...${NC}"
-    
-    if [[ ! -f "${PLUGIN_DIR}/dist/cli.js" ]]; then
-        echo -e "${ERROR}CLI not built. Run scripts/build.sh first${NC}"
-        exit 1
-    fi
-    
-    echo -e "${INFO}Starting OpenCode Telegram Bot...${NC}"
-    echo -e "${INFO}Configuration wizard will guide you through setup${NC}"
-    echo ""
-    
-    cd "${PLUGIN_DIR}"
-    node dist/cli.js
+    echo -e "${BOLD}Configuration (all optional):${NC}"
+    echo -e "${INFO}  opencodeBaseUrl: OpenCode server URL (default: http://localhost:4096)${NC}"
+    echo -e "${INFO}  channels/accountIds/conversationIds: Scope filters (empty = all)${NC}"
 }
 
 dry_run_publish() {
-    echo -e "${BOLD}Dry run: checking what would be published${NC}"
+    echo -e "${BOLD}Dry run: checking package contents${NC}"
     echo ""
     cd "${PLUGIN_DIR}"
     npm pack --dry-run
 }
 
 show_help() {
-    echo -e "${BOLD}OpenClawCode Install/Publish Script${NC}"
+    echo -e "${BOLD}OpenClawCode Install Script${NC}"
     echo ""
     echo "Usage: bash scripts/install.sh [command]"
     echo ""
     echo "Commands:"
-    echo "  info       Show publish and install instructions (default)"
-    echo "  local      Install locally from tarball for testing"
-    echo "  link       Link locally (--link mode, live source)"
-    echo "  publish    Dry run npm pack to check package contents"
-    echo "  standalone Run as standalone Telegram bot"
-    echo "  help       Show this help message"
-    echo ""
-    echo -e "${BOLD}Recommended workflow:${NC}"
-    echo "  1. Build:    bash scripts/build.sh"
-    echo "  2. Test:     bash scripts/install.sh local"
-    echo "  3. Publish:  npm publish --access public"
+    echo "  info       Show installation info (default)"
+    echo "  local      Install locally from tarball"
+    echo "  link       Link locally (--link mode)"
+    echo "  publish    Dry run npm pack"
+    echo "  help       Show this help"
 }
 
 main() {
@@ -192,9 +150,7 @@ main() {
     
     case "${command}" in
         info)
-            check_build
-            show_publish_info
-            show_install_info
+            show_info
             ;;
         local)
             install_local
@@ -205,10 +161,6 @@ main() {
         publish)
             check_build
             dry_run_publish
-            ;;
-        standalone)
-            check_build
-            run_standalone
             ;;
         help|--help|-h)
             show_help

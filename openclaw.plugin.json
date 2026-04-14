@@ -1,7 +1,7 @@
 {
   "id": "openclawcode",
   "name": "OpenClawCode",
-  "description": "OpenCode command handling for OpenClaw channel messages",
+  "description": "OpenClaw plugin for OpenCode - intercept channel messages and route to OpenCode server",
   "enabledByDefault": false,
   "configSchema": {
     "type": "object",
@@ -9,44 +9,44 @@
     "properties": {
       "enabled": {
         "type": "boolean",
-        "description": "Whether to enable the OpenClawCode channel command plugin"
+        "description": "Enable the OpenCode channel command plugin"
       },
       "channels": {
         "type": "array",
-        "description": "Only enable command interception on these channel IDs; empty means all channels",
+        "description": "Channel IDs to intercept (empty = all)",
         "items": {
           "type": "string"
         }
       },
       "accountIds": {
         "type": "array",
-        "description": "Only enable command interception for these account IDs; empty means all accounts",
+        "description": "Account IDs to intercept (empty = all)",
         "items": {
           "type": "string"
         }
       },
       "conversationIds": {
         "type": "array",
-        "description": "Only enable command interception for these conversation IDs; empty means all conversations",
+        "description": "Conversation IDs to intercept (empty = all)",
         "items": {
           "type": "string"
         }
       },
       "opencodeBaseUrl": {
         "type": "string",
-        "description": "OpenCode server base URL, for example http://localhost:4096"
+        "description": "OpenCode server URL (default: http://localhost:4096)"
       },
       "opencodeUsername": {
         "type": "string",
-        "description": "OpenCode server username for basic auth"
+        "description": "OpenCode auth username"
       },
       "opencodePassword": {
         "type": "string",
-        "description": "OpenCode server password for basic auth"
+        "description": "OpenCode auth password"
       },
       "defaultProjectDirectory": {
         "type": "string",
-        "description": "Default OpenCode project directory used when no project has been selected yet"
+        "description": "Default OpenCode project directory"
       }
     }
   }
