@@ -9,18 +9,16 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./cli": "./dist/cli.js"
+    "./cli": "./dist/cli.js",
+    "./openclaw-plugin": "./dist/openclaw-plugin.js"
   },
   "openclaw": {
     "extensions": [
-      "./src/openclaw-plugin.ts"
+      "./dist/openclaw-plugin.js"
     ],
     "plugin": {
       "id": "openclawcode",
       "enabledByDefault": false
-    },
-    "bundle": {
-      "stageRuntimeDependencies": true
     }
   },
   "files": [
@@ -47,7 +45,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/grinev/opencode-telegram-bot.git"
+    "url": "git+https://github.com/luoyingwen/openclawcode.git"
   },
   "keywords": [
     "opencode",
@@ -55,14 +53,16 @@
     "telegram-bot",
     "grammy",
     "developer-tools",
-    "cli"
+    "cli",
+    "openclaw",
+    "openclaw-plugin"
   ],
   "author": "grinev",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/grinev/opencode-telegram-bot/issues"
+    "url": "https://github.com/luoyingwen/openclawcode/issues"
   },
-  "homepage": "https://github.com/grinev/opencode-telegram-bot#readme",
+  "homepage": "https://github.com/luoyingwen/openclawcode#readme",
   "dependencies": {
     "@grammyjs/menu": "^1.3.1",
     "@opencode-ai/sdk": "^1.1.21",
@@ -81,10 +81,13 @@
     "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.1.8",
-    "openclaw": "workspace:*",
+    "openclaw": ">=2025.0.0",
     "prettier": "^3.8.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2025.0.0"
   }
 }

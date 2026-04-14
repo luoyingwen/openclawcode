@@ -3,7 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-REPO_ROOT="$(cd "${PLUGIN_DIR}/../.." && pwd)"
 
 BOLD='\033[1m'
 INFO='\033[38;2;136;146;176m'
@@ -13,123 +12,109 @@ ERROR='\033[38;2;230;57;70m'
 NC='\033[0m'
 
 PLUGIN_ID="openclawcode"
-PLUGIN_NAME="@grinev/opencode-telegram-bot"
+PACKAGE_NAME="@grinev/opencode-telegram-bot"
 
 check_build() {
-    if [[ -f "${PLUGIN_DIR}/dist/extensions/openclawcode/src/openclaw-plugin.js" ]]; then
-        return 0
+    if [[ ! -f "${PLUGIN_DIR}/dist/openclaw-plugin.js" ]]; then
+        echo -e "${ERROR}Plugin not built. Run scripts/build.sh first${NC}"
+        exit 1
     fi
-    if [[ -f "${REPO_ROOT}/dist/extensions/openclawcode/src/openclaw-plugin.js" ]]; then
-        return 0
-    fi
-    echo -e "${ERROR}Plugin not built. Run scripts/build.sh first${NC}"
-    exit 1
 }
 
-check_openclaw() {
-    if ! command -v openclaw &> /dev/null; then
-        echo -e "${WARN}OpenClaw CLI not found in PATH${NC}"
-        echo -e "${INFO}This plugin is a bundled plugin in the OpenClaw repo${NC}"
-        echo -e "${INFO}It will be auto-discovered when OpenClaw is built from source${NC}"
+check_npm_auth() {
+    if ! npm whoami 2>&1 | grep -q "@"; then
+        echo -e "${WARN}Not logged in to npm${NC}"
+        echo -e "${INFO}Run: npm login${NC}"
         return 1
     fi
     return 0
 }
 
-is_bundled_plugin() {
-    local repo_root
-    repo_root="$(cd "${PLUGIN_DIR}/.." && pwd)"
-
-    if [[ -f "${repo_root}/package.json" ]] && grep -q "openclaw" "${repo_root}/package.json" 2>/dev/null; then
-        return 0
-    fi
-    return 1
+show_publish_info() {
+    echo -e "${BOLD}Publishing to npm${NC}"
+    echo ""
+    echo -e "${INFO}Steps to publish:${NC}"
+    echo -e "${INFO}1. Build: npm run build${NC}"
+    echo -e "${INFO}2. Login: npm login${NC}"
+    echo -e "${INFO}3. Publish: npm publish --access public${NC}"
+    echo ""
+    echo -e "${BOLD}Or use npm release scripts:${NC}"
+    echo -e "${INFO}  npm run release:prepare  - Prepare stable release${NC}"
+    echo -e "${INFO}  npm run release:rc       - Prepare RC release${NC}"
 }
 
-install_as_bundled() {
-    echo -e "${BOLD}Installing as bundled plugin...${NC}"
-    echo -e "${INFO}OpenClawCode is a bundled plugin in the OpenClaw repository${NC}"
-    echo -e "${INFO}No separate installation needed - it's auto-discovered${NC}"
+show_install_info() {
     echo ""
-    echo -e "${SUCCESS}Plugin location: ${PLUGIN_DIR}${NC}"
+    echo -e "${BOLD}Installing from npm${NC}"
     echo ""
-    echo -e "${BOLD}To enable the plugin:${NC}"
-    echo -e "${INFO}1. Build OpenClaw: pnpm build (from repo root)${NC}"
-    echo -e "${INFO}2. Enable in config: openclaw config set plugins.entries.${PLUGIN_ID}.enabled true${NC}"
+    echo -e "${INFO}After publishing, users can install:${NC}"
+    echo -e "${SUCCESS}  openclaw plugins install ${PACKAGE_NAME}${NC}"
     echo ""
-    echo -e "${BOLD}Optional configuration (all have defaults):${NC}"
+    echo -e "${BOLD}Configuration (all optional, have defaults):${NC}"
+    echo -e "${INFO}  openclaw config set plugins.entries.${PLUGIN_ID}.enabled true${NC}"
+    echo -e "${INFO}  openclaw config set plugins.entries.${PLUGIN_ID}.config.opencodeBaseUrl \"http://localhost:4096\"${NC}"
+    echo ""
+    echo -e "${BOLD}Config options:${NC}"
     echo -e "${INFO}  - opencodeBaseUrl: OpenCode server URL (default: http://localhost:4096)${NC}"
     echo -e "${INFO}  - opencodeUsername: Auth username${NC}"
     echo -e "${INFO}  - opencodePassword: Auth password${NC}"
     echo -e "${INFO}  - channels: Channel IDs to intercept (empty = all)${NC}"
     echo -e "${INFO}  - accountIds: Account IDs to intercept (empty = all)${NC}"
-    echo -e "${INFO}  - conversationIds: Conversation IDs to intercept (empty = all)${NC}"
+    echo -e "${INFO}  - conversationIds: Conversation IDs (empty = all)${NC}"
     echo -e "${INFO}  - defaultProjectDirectory: Default project path${NC}"
-}
-
-install_to_openclaw() {
-    echo -e "${BOLD}Installing plugin to OpenClaw...${NC}"
-
-    if ! check_openclaw; then
-        return
-    fi
-
-    echo -e "${INFO}Checking OpenClaw version...${NC}"
-    openclaw_version="$(openclaw --version || echo "unknown")"
-    echo -e "${INFO}OpenClaw version: ${openclaw_version}${NC}"
-
-    echo -e "${BOLD}Plugin options:${NC}"
-    echo -e "${INFO}1. Bundled plugin (auto-discovered): Already available in repo${NC}"
-    echo -e "${INFO}2. External plugin install: openclaw plugins install ${PLUGIN_NAME}${NC}"
-    echo ""
-
-    echo -e "${BOLD}Recommended: Use as bundled plugin${NC}"
-    install_as_bundled
 }
 
 run_standalone() {
     echo -e "${BOLD}Running as standalone Telegram bot...${NC}"
-
+    
     if [[ ! -f "${PLUGIN_DIR}/dist/cli.js" ]]; then
         echo -e "${ERROR}CLI not built. Run scripts/build.sh first${NC}"
         exit 1
     fi
-
+    
     echo -e "${INFO}Starting OpenCode Telegram Bot...${NC}"
     echo -e "${INFO}Configuration wizard will guide you through setup${NC}"
     echo ""
-
+    
     cd "${PLUGIN_DIR}"
     node dist/cli.js
 }
 
+dry_run_publish() {
+    echo -e "${BOLD}Dry run: checking what would be published${NC}"
+    echo ""
+    npm pack --dry-run
+}
+
 show_help() {
-    echo -e "${BOLD}OpenClawCode Install Script${NC}"
+    echo -e "${BOLD}OpenClawCode Install/Publish Script${NC}"
     echo ""
     echo "Usage: bash scripts/install.sh [command]"
     echo ""
     echo "Commands:"
-    echo "  install    Show installation instructions (default)"
+    echo "  info       Show publish and install instructions (default)"
+    echo "  publish    Dry run npm pack to check package contents"
     echo "  standalone Run as standalone Telegram bot"
     echo "  help       Show this help message"
     echo ""
-    echo -e "${BOLD}Notes:${NC}"
-    echo "  - This plugin is bundled in OpenClaw repo and auto-discovered"
-    echo "  - No separate npm install needed when using OpenClaw from source"
-    echo "  - Can also run standalone as OpenCode Telegram Bot"
+    echo -e "${BOLD}Workflow:${NC}"
+    echo "  1. Build: npm run build"
+    echo "  2. Publish: npm publish --access public"
+    echo "  3. Users install: openclaw plugins install ${PACKAGE_NAME}"
 }
 
 main() {
-    command="${1:-install}"
-
+    command="${1:-info}"
+    
     case "${command}" in
-        install)
+        info)
             check_build
-            if is_bundled_plugin; then
-                install_as_bundled
-            else
-                install_to_openclaw
-            fi
+            show_publish_info
+            show_install_info
+            ;;
+        publish)
+            check_build
+            dry_run_publish
             ;;
         standalone)
             check_build
