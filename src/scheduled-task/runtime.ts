@@ -18,12 +18,16 @@ import type { QueuedScheduledTaskDelivery, ScheduledTask, ScheduledTaskExecution
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const MESSAGE_LIMIT = 20000;
 const TASK_DESCRIPTION_PREVIEW_LENGTH = 64;
+const RESTART_INTERRUPTED_ERROR = "Task interrupted by process restart.";
 
 type NotificationCallback = (text: string) => Promise<void>;
 let notificationCallback: NotificationCallback | null = null;
+let initialized = false;
 
 const timersByTaskId = new Map<string, ReturnType<typeof setTimeout>>();
 const runningTaskIds = new Set<string>();
+const deliveryQueue: QueuedScheduledTaskDelivery[] = [];
+let flushInProgress = false;
 
 export function setNotificationCallback(callback: NotificationCallback): void {
   notificationCallback = callback;
@@ -102,12 +106,87 @@ function scheduleTask(task: ScheduledTask): void {
   logger.info(`[ScheduledTaskRuntime] Scheduled task ${task.id} in ${Math.floor(timeoutMs / 1000)}s`);
 }
 
+async function initialize(): Promise<void> {
+  if (initialized) {
+    return;
+  }
+  initialized = true;
+  logger.info("[ScheduledTaskRuntime] Initializing...");
+  await recoverTasksOnStartup();
+}
+
+async function recoverTasksOnStartup(): Promise<void> {
+  const tasks = listScheduledTasks();
+  if (tasks.length === 0) {
+    return;
+  }
+
+  const now = new Date();
+  let hasChanges = false;
+  const normalizedTasks = tasks.map((task) => {
+    const normalizedTask: ScheduledTask = { ...task, model: { ...task.model } };
+
+    if (normalizedTask.lastStatus === "running") {
+      normalizedTask.lastStatus = "error";
+      normalizedTask.lastError = RESTART_INTERRUPTED_ERROR;
+      hasChanges = true;
+    }
+
+    if (normalizedTask.kind === "cron") {
+      if (!normalizedTask.nextRunAt || Number.isNaN(Date.parse(normalizedTask.nextRunAt))) {
+        try {
+          normalizedTask.nextRunAt = computeNextRunAt(normalizedTask, now);
+        } catch (error) {
+          logger.error(
+            `[ScheduledTaskRuntime] Failed to recover next run for cron task: id=${normalizedTask.id}`,
+            error,
+          );
+          normalizedTask.nextRunAt = null;
+          normalizedTask.lastStatus = "error";
+          normalizedTask.lastError = normalizedTask.lastError || "Failed to recover cron schedule.";
+          hasChanges = true;
+        }
+        hasChanges = true;
+      }
+    } else {
+      const runAtMs = Date.parse(normalizedTask.runAt ?? "");
+      if (Number.isNaN(runAtMs)) {
+        normalizedTask.nextRunAt = null;
+        normalizedTask.lastStatus = "error";
+        normalizedTask.lastError = normalizedTask.lastError || "Invalid one-time task runAt value.";
+        hasChanges = true;
+      } else if (normalizedTask.nextRunAt === null && normalizedTask.lastStatus === "idle") {
+        normalizedTask.nextRunAt = new Date(runAtMs).toISOString();
+        hasChanges = true;
+      }
+    }
+
+    return normalizedTask;
+  });
+
+  if (hasChanges) {
+    await replaceScheduledTasks(normalizedTasks);
+  }
+
+  for (const task of normalizedTasks) {
+    scheduleTask(task);
+  }
+
+  logger.info(`[ScheduledTaskRuntime] Recovered ${normalizedTasks.length} tasks on startup`);
+}
+
 function registerTask(task: ScheduledTask): void {
+  if (!initialized) {
+    logger.warn("[ScheduledTaskRuntime] Not initialized, skipping registerTask");
+    return;
+  }
   scheduleTask(task);
 }
 
 function removeTask(taskId: string): void {
   removeTaskTimer(taskId);
+  runningTaskIds.delete(taskId);
+  deliveryQueue.splice(0, deliveryQueue.length);
 }
 
 async function executeTask(taskId: string): Promise<void> {
@@ -194,9 +273,12 @@ async function deliverQueuedMessage(delivery: QueuedScheduledTaskDelivery): Prom
 }
 
 export const scheduledTaskRuntime = {
+  initialize,
   registerTask,
   removeTask,
   scheduleNextRun: scheduleTask,
   executeTask,
   deliverQueuedMessage,
+  setNotificationCallback,
+  clearNotificationCallback,
 };

@@ -26,6 +26,7 @@ import {
 import { getStoredModel, getModelSelectionLists } from "./model/manager.js";
 import type { FavoriteModel } from "./model/types.js";
 import { listScheduledTasks } from "./scheduled-task/store.js";
+import { scheduledTaskRuntime } from "./scheduled-task/runtime.js";
 import type { PermissionRequest } from "./permission/types.js";
 import {
   recordProactiveRisk,
@@ -1597,6 +1598,25 @@ export default definePluginEntry({
       logger.info("[OpenClawCode] plugin disabled by config.enabled=false");
       return;
     }
+
+    scheduledTaskRuntime.setNotificationCallback(async (text: string) => {
+      if (state.interceptMode?.channelId && state.interceptMode?.conversationId) {
+        const route: FollowUpRoute = {
+          channelId: state.interceptMode.channelId,
+          accountId: state.interceptMode.accountId,
+          conversationId: state.interceptMode.conversationId,
+        };
+        await sendFollowUpMessage(api, route, { text }, logger);
+      } else {
+        logger.warn("[OpenClawCode] No intercept mode, cannot send task notification");
+      }
+    });
+
+    void scheduledTaskRuntime.initialize().then(() => {
+      logger.info("[OpenClawCode] Scheduled task runtime initialized");
+    }).catch((error) => {
+      logger.error(`[OpenClawCode] Failed to initialize scheduled task runtime: ${String(error)}`);
+    });
 
     api.on("message_received", async (event, ctx) => {
       try {
