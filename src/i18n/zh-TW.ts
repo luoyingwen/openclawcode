@@ -458,6 +458,9 @@ export const zhTW: I18nDictionary = {
   "opencode.no_pending_permission": "沒有待處理的權限請求。",
   "opencode.permission_cleared": "沒有活動會話。權限請求已清除。",
   "opencode.permission_reply_hint": "沒有待處理的權限請求。當出現權限提示時回覆 /1、/2 或 /3。",
+  "opencode.session_status_idle": "閒置",
+  "opencode.session_status_busy": "忙碌",
+  "opencode.session_status_unknown": "未知",
 
   "project.select_prompt": "請提供項目編號或路徑。使用 `/projects` 查看列表或提供絕對路徑。",
   "project.not_selected_config":

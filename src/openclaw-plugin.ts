@@ -32,6 +32,7 @@ import {
 import { ensureProjectByPath } from "./project/manager.js";
 import { renameManager } from "./rename/manager.js";
 import { t, resolveSupportedLocale, setRuntimeLocale } from "./i18n/index.js";
+import { safeBackgroundTask } from "./utils/safe-background-task.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUILD_INFO_PATH = path.join(PACKAGE_ROOT, "dist", "build-info.json");
@@ -189,6 +190,8 @@ type PromptProgressTracker = {
   trackedSessionIds: Set<string>;
   thinkingSent: boolean;
   runningToolCalls: Set<string>;
+  textParts: Map<string, string>;
+  completedMessageIds: Set<string>;
 };
 
 type SessionLifecycleEvent = {
@@ -204,18 +207,28 @@ type SessionLifecycleEvent = {
 type ProgressEvent = {
   type?: string;
   properties?: {
+    sessionID?: string;
     part?: {
       sessionID?: string;
       messageID?: string;
       callID?: string;
       tool?: string;
       type?: string;
+      id?: string;
+      text?: string;
+      time?: { created?: number; completed?: number };
       state?: {
         status?: string;
         input?: Record<string, unknown>;
         title?: string;
         metadata?: Record<string, unknown>;
       };
+    };
+    message?: {
+      id?: string;
+      sessionID?: string;
+      role?: string;
+      time?: { created?: number; completed?: number };
     };
   };
 };
@@ -488,6 +501,8 @@ export function createPromptProgressTracker(rootSessionId: string): PromptProgre
     trackedSessionIds: new Set([rootSessionId]),
     thinkingSent: false,
     runningToolCalls: new Set(),
+    textParts: new Map(),
+    completedMessageIds: new Set(),
   };
 }
 
@@ -612,8 +627,9 @@ async function streamPromptProgress(params: {
   session: SessionState;
   logger: PluginLogger;
   abortSignal: AbortSignal;
+  onComplete?: (text: string) => Promise<void>;
 }): Promise<void> {
-  const { api, client, route, session, logger, abortSignal } = params;
+  const { api, client, route, session, logger, abortSignal, onComplete } = params;
 
   try {
     const result = await client.event.subscribe(
@@ -632,6 +648,7 @@ async function streamPromptProgress(params: {
       }
 
       const eventType = normalizeText((event as { type?: string }).type);
+
       if (eventType === "permission.asked") {
         const request = (event as { properties?: PermissionRequest }).properties;
         if (request && request.sessionID === session.id) {
@@ -651,12 +668,59 @@ async function streamPromptProgress(params: {
         continue;
       }
 
-      const message = resolvePromptProgressMessage(event, tracker);
-      if (!message) {
+      if (eventType === "message.part.updated") {
+        const progressEvent = event as ProgressEvent;
+        const part = progressEvent.properties?.part;
+        const sessionId = normalizeText(part?.sessionID);
+        if (sessionId && tracker.trackedSessionIds.has(sessionId)) {
+          if (part?.type === "text" && part.id && part.text) {
+            tracker.textParts.set(part.id, part.text);
+          }
+          if (part?.time?.completed && part.messageID) {
+            tracker.completedMessageIds.add(part.messageID);
+          }
+        }
+        const message = resolvePromptProgressMessage(event, tracker);
+        if (message) {
+          await sendFollowUpMessage(api, route, message, logger);
+        }
         continue;
       }
 
-      await sendFollowUpMessage(api, route, message, logger);
+      if (eventType === "message.updated") {
+        const progressEvent = event as ProgressEvent;
+        const msg = progressEvent.properties?.message;
+        if (msg?.sessionID === session.id && msg?.time?.completed && msg.id) {
+          tracker.completedMessageIds.add(msg.id);
+        }
+        continue;
+      }
+
+      if (eventType === "session.idle") {
+        const progressEvent = event as ProgressEvent;
+        const idleSessionId = progressEvent.properties?.sessionID;
+        if (idleSessionId === session.id) {
+          logger.info(`[OpenClawCode] Session idle detected: session=${session.id}`);
+          if (onComplete && tracker.textParts.size > 0) {
+            const combinedText = Array.from(tracker.textParts.values()).join("");
+            if (combinedText.trim()) {
+              await onComplete(combinedText);
+            }
+          }
+          break;
+        }
+        continue;
+      }
+
+      if (eventType === "session.error") {
+        const progressEvent = event as ProgressEvent;
+        const errorSessionId = progressEvent.properties?.sessionID;
+        if (errorSessionId === session.id) {
+          logger.error(`[OpenClawCode] Session error detected: session=${session.id}`);
+          break;
+        }
+        continue;
+      }
     }
   } catch (error) {
     if (abortSignal.aborted) {
@@ -1150,56 +1214,95 @@ async function sendAsyncPromptToOpencodeWithProgress(params: {
   logger: PluginLogger;
   route: FollowUpRoute;
   content: string;
-}): Promise<string> {
+}): Promise<void> {
   const { api, client, config, state, logger, route, content } = params;
   const session = await preparePromptSession({ client, config, state, logger });
 
-  const progressAbortController = new AbortController();
-  const progressTask = streamPromptProgress({
+  logger.info(
+    `[OpenClawCode] forwarding async message to OpenCode session=${session.id} directory=${session.directory} length=${content.length}`,
+  );
+
+  const onComplete = async (text: string): Promise<void> => {
+    await savePluginState(state, logger);
+    if (text.trim()) {
+      await sendFollowUpMessage(api, route, { text, format: "markdown" }, logger);
+    }
+    await sendFollowUpMessage(api, route, { text: "✅ Done", format: "text" }, logger);
+    logger.info(
+      `[OpenClawCode] async prompt completed session=${session.id} channel=${route.channelId ?? "unknown"} conversation=${route.conversationId ?? "unknown"}`,
+    );
+  };
+
+  streamPromptProgress({
     api,
     client,
     route,
     session,
     logger,
-    abortSignal: progressAbortController.signal,
+    abortSignal: new AbortController().signal,
+    onComplete,
   });
 
-  try {
-    logger.info(
-      `[OpenClawCode] forwarding async message to OpenCode session=${session.id} directory=${session.directory} length=${content.length}`,
-    );
-
-    const { data, error } = await client.session.prompt({
-      sessionID: session.id,
-      directory: session.directory,
-      parts: [{ type: "text", text: content }],
-    });
-    if (error || !data) {
-      let errorDetail: string;
+  safeBackgroundTask({
+    taskName: "session.prompt",
+    task: () =>
+      client.session.prompt({
+        sessionID: session.id,
+        directory: session.directory,
+        parts: [{ type: "text", text: content }],
+      }),
+    onSuccess: ({ error }) => {
       if (error) {
-        if (typeof error === "object" && Object.keys(error as object).length === 0) {
-          errorDetail = "empty error object (server may be restarting)";
-        } else if (error instanceof Error) {
-          errorDetail = `${error.name}: ${error.message}`;
-        } else {
-          errorDetail = JSON.stringify(error);
-        }
-      } else {
-        errorDetail = "no data returned";
-      }
-      logger.error(
-        `[OpenClawCode] session.prompt failed: session=${session.id} directory=${session.directory} error=${errorDetail}`,
-      );
-      throw new Error(`OpenCode session.prompt failed: ${errorDetail}`);
-    }
+        const isTerminatedError =
+          typeof error === "object" &&
+          (Object.keys(error as object).length === 0 ||
+            (error instanceof Error &&
+              (error.message?.includes("terminated") ||
+                error.message?.includes("Connection") ||
+                error.message?.includes("aborted"))));
 
-    logger.info(`[OpenClawCode] session.prompt success: session=${session.id}`);
-    const responseText = collectResponseText((data.parts ?? []) as ResponseTextPart[]);
-    return responseText || t("opencode.response_empty");
-  } finally {
-    progressAbortController.abort();
-    await progressTask;
-  }
+        if (isTerminatedError) {
+          logger.warn(
+            `[OpenClawCode] session.prompt connection issue (SSE may still handle completion): session=${session.id}`,
+          );
+          return;
+        }
+
+        const errorDetail =
+          error instanceof Error ? `${error.name}: ${error.message}` : JSON.stringify(error);
+        logger.error(
+          `[OpenClawCode] session.prompt API error: session=${session.id} error=${errorDetail}`,
+        );
+        void sendFollowUpMessage(
+          api,
+          route,
+          {
+            text: `❌ OpenCode request failed: ${errorDetail}`,
+            format: "text",
+          },
+          logger,
+        ).catch(() => {});
+      } else {
+        logger.info(`[OpenClawCode] session.prompt call completed: session=${session.id}`);
+      }
+    },
+    onError: (error) => {
+      const errorDetail =
+        error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      logger.error(
+        `[OpenClawCode] session.prompt background error: session=${session.id} error=${errorDetail}`,
+      );
+      void sendFollowUpMessage(
+        api,
+        route,
+        {
+          text: `❌ OpenCode request failed: ${errorDetail}`,
+          format: "text",
+        },
+        logger,
+      ).catch(() => {});
+    },
+  });
 }
 
 function schedulePromptFollowUp(params: {
@@ -1216,7 +1319,7 @@ function schedulePromptFollowUp(params: {
   setImmediate(() => {
     void (async () => {
       try {
-        const replyText = await sendAsyncPromptToOpencodeWithProgress({
+        await sendAsyncPromptToOpencodeWithProgress({
           api,
           client,
           config,
@@ -1225,27 +1328,8 @@ function schedulePromptFollowUp(params: {
           route,
           content,
         });
-        await savePluginState(state, logger);
-        await sendFollowUpMessage(
-          api,
-          route,
-          {
-            text: replyText,
-            format: "markdown",
-          },
-          logger,
-        );
-        await sendFollowUpMessage(
-          api,
-          route,
-          {
-            text: "✅ Done",
-            format: "text",
-          },
-          logger,
-        );
         logger.info(
-          `[OpenClawCode] async prompt follow-up sent channel=${route.channelId ?? "unknown"} conversation=${route.conversationId ?? "unknown"}`,
+          `[OpenClawCode] async prompt dispatched channel=${route.channelId ?? "unknown"} conversation=${route.conversationId ?? "unknown"}`,
         );
       } catch (error) {
         const errorDetails =
@@ -1390,6 +1474,10 @@ async function handleCommand(params: {
         return `OpenCode server is unavailable at ${config.opencodeBaseUrl ?? "http://localhost:4096"}.`;
       }
 
+      const statusKey =
+        currentSessionStatus === "busy"
+          ? "opencode.session_status_busy"
+          : "opencode.session_status_idle";
       return [
         "# OpenClawCode Status",
         "",
@@ -1398,7 +1486,7 @@ async function handleCommand(params: {
         `- Configured base URL: \`${config.opencodeBaseUrl ?? "http://localhost:4096"}\``,
         `- Current project: \`${state.currentProject?.worktree ?? config.defaultProjectDirectory ?? "not selected"}\``,
         `- Current session: ${state.currentSession ? `**${state.currentSession.title}** [\`${state.currentSession.id}\`]` : "not selected"}`,
-        `- Current session status: ${currentSessionStatus ?? "unknown"}`,
+        `- Current session status: ${t(statusKey)}`,
         `- Intercept mode: ${formatInterceptModeStatus(state)}`,
       ].join("\n");
     } catch (error) {

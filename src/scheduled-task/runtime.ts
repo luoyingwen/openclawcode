@@ -13,7 +13,11 @@ import {
   replaceScheduledTasks,
   updateScheduledTask,
 } from "./store.js";
-import type { QueuedScheduledTaskDelivery, ScheduledTask, ScheduledTaskExecutionResult } from "./types.js";
+import type {
+  QueuedScheduledTaskDelivery,
+  ScheduledTask,
+  ScheduledTaskExecutionResult,
+} from "./types.js";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const MESSAGE_LIMIT = 20000;
@@ -27,7 +31,6 @@ let initialized = false;
 const timersByTaskId = new Map<string, ReturnType<typeof setTimeout>>();
 const runningTaskIds = new Set<string>();
 const deliveryQueue: QueuedScheduledTaskDelivery[] = [];
-let flushInProgress = false;
 
 export function setNotificationCallback(callback: NotificationCallback): void {
   notificationCallback = callback;
@@ -103,7 +106,9 @@ function scheduleTask(task: ScheduledTask): void {
   }, timeoutMs);
 
   timersByTaskId.set(task.id, timer);
-  logger.info(`[ScheduledTaskRuntime] Scheduled task ${task.id} in ${Math.floor(timeoutMs / 1000)}s`);
+  logger.info(
+    `[ScheduledTaskRuntime] Scheduled task ${task.id} in ${Math.floor(timeoutMs / 1000)}s`,
+  );
 }
 
 async function initialize(): Promise<void> {
@@ -203,7 +208,9 @@ async function executeTask(taskId: string): Promise<void> {
   }
 
   runningTaskIds.add(taskId);
-  logger.info(`[ScheduledTaskRuntime] Executing task ${taskId}: ${truncateDescription(task.prompt)}`);
+  logger.info(
+    `[ScheduledTaskRuntime] Executing task ${taskId}: ${truncateDescription(task.prompt)}`,
+  );
 
   try {
     const result: ScheduledTaskExecutionResult = await executeScheduledTask(task);
@@ -211,7 +218,9 @@ async function executeTask(taskId: string): Promise<void> {
     if (result.status === "success") {
       const summaryText = result.resultText ?? "";
       const truncatedSummary =
-        summaryText.length > MESSAGE_LIMIT ? `${summaryText.slice(0, MESSAGE_LIMIT - 3)}...` : summaryText;
+        summaryText.length > MESSAGE_LIMIT
+          ? `${summaryText.slice(0, MESSAGE_LIMIT - 3)}...`
+          : summaryText;
 
       await sendNotification(
         `✅ **Scheduled task completed**\n\n**Prompt:** ${truncateDescription(task.prompt)}\n\n${truncatedSummary}`,

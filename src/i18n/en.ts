@@ -497,6 +497,9 @@ export const en = {
   "opencode.permission_cleared": "No active session. Permission request cleared.",
   "opencode.permission_reply_hint":
     "No pending permission request. Reply /1, /2, or /3 when a permission prompt appears.",
+  "opencode.session_status_idle": "idle",
+  "opencode.session_status_busy": "busy",
+  "opencode.session_status_unknown": "unknown",
 
   "project.select_prompt":
     "Please provide a project number or path. Use `/projects` to see the list or provide an absolute path.",
