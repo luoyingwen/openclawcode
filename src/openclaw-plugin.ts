@@ -38,8 +38,8 @@ const BUILD_INFO_PATH = path.join(PACKAGE_ROOT, "dist", "build-info.json");
 const DINGTALK_MESSAGE_LIMIT = 20_000;
 const STATE_DIRNAME = "openclawcode";
 const STATE_FILENAME = "state.json";
-const ENTER_OPENCODE_COMMAND = "进入opencode";
-const LEAVE_OPENCODE_COMMAND = "离开opencode";
+const ENTER_OPENCODE_COMMAND = "opencode";
+const LEAVE_OPENCODE_COMMAND = "exit";
 
 const PERMISSION_EMOJI_MAP: Record<string, string> = {
   bash: "💻",
@@ -638,7 +638,11 @@ async function streamPromptProgress(params: {
           storePermissionRequest(route, request);
           const emoji = PERMISSION_EMOJI_MAP[request.permission] || "🔐";
           const patterns = request.patterns.join("\n");
-          const message = `🔐 **Permission Request**\n\n**Type:** ${emoji} ${request.permission}\n\n**Patterns:**\n\`\`\`\n${patterns}\n\`\`\`\n\nPlease reply with:\n**/1** - Allow once\n**/2** - Always allow\n**/3** - Reject`;
+          const message = t("permission.reply_hint", {
+            emoji,
+            type: request.permission,
+            patterns,
+          });
           await sendFollowUpMessage(api, route, { text: message }, logger);
           logger.info(
             `[OpenClawCode] Permission request sent: requestID=${request.id}, type=${request.permission}`,
@@ -1064,46 +1068,46 @@ function formatAgents(agents: AgentRecord[], currentAgent: string | undefined): 
     return `${index + 1}. ${agent.name}${marker}`;
   });
   return [
-    "# Available Agents",
+    t("agent.list_title"),
     "",
     ...lines,
     "",
-    `Current: ${currentAgent ?? "build"}`,
+    t("agent.current", { current: currentAgent ?? "build" }),
     "",
-    "Use `/agent <number>` to select an agent.",
+    t("agent.select_hint"),
   ].join("\n");
 }
 
 function formatHelpText(): string {
   return [
-    "# OpenClawCode Channel Commands",
+    t("help.title"),
     "",
-    `- /${ENTER_OPENCODE_COMMAND} - Enter OpenCode intercept mode for this conversation`,
-    `- /${LEAVE_OPENCODE_COMMAND} - Leave OpenCode intercept mode for this conversation`,
-    "- /help - Show this command list",
-    "- /status - Show OpenCode health and current plugin state",
-    "- /projects - List OpenCode projects",
-    "- /project <number or path> - Select a project by number or path",
-    "- /sessions - List sessions in the current project",
-    "- /session <number> - Select a session by number",
-    "- /agents - List available agents",
-    "- /agent <number> - Select the indexed agent",
-    "- /models - List available models",
-    "- /model <number> - Select the indexed model",
-    "- /new - Create and select a new OpenCode session",
-    "- /rename - Rename the current session (interactive)",
-    "- /stop - Abort the current OpenCode session or cancel active flow",
-    "- /task - Start scheduled task creation flow",
-    "- /tasklist - View and manage scheduled tasks",
-    "- /permission - Show pending permission request or risk status",
-    "- /commands - List project commands exposed by OpenCode",
+    `- /${ENTER_OPENCODE_COMMAND} - ${t("help.opencode")}`,
+    `- /${LEAVE_OPENCODE_COMMAND} - ${t("help.exit")}`,
+    `- /help - ${t("help.help")}`,
+    `- /status - ${t("help.status")}`,
+    `- /projects - ${t("help.projects")}`,
+    `- /project <number or path> - ${t("help.project")}`,
+    `- /sessions - ${t("help.sessions")}`,
+    `- /session <number> - ${t("help.session")}`,
+    `- /agents - ${t("help.agents")}`,
+    `- /agent <number> - ${t("help.agent")}`,
+    `- /models - ${t("help.models")}`,
+    `- /model <number> - ${t("help.model")}`,
+    `- /new - ${t("help.new")}`,
+    `- /rename - ${t("help.rename")}`,
+    `- /stop - ${t("help.stop")}`,
+    `- /task - ${t("help.task")}`,
+    `- /tasklist - ${t("help.tasklist")}`,
+    `- /permission - ${t("help.permission")}`,
+    `- /commands - ${t("help.commands")}`,
     "",
-    "**Permission Replies:**",
-    "- /1 - Allow once",
-    "- /2 - Always allow",
-    "- /3 - Reject",
+    t("help.permission_replies"),
+    `- /1 - ${t("help.permission_1")}`,
+    `- /2 - ${t("help.permission_2")}`,
+    `- /3 - ${t("help.permission_3")}`,
     "",
-    "All commands except /进入opencode and /离开opencode only work after intercept mode is enabled.",
+    t("help.intercept_hint"),
   ].join("\n");
 }
 
@@ -1275,7 +1279,7 @@ function schedulePromptFollowUp(params: {
 function formatProjects(projects: ProjectRecord[], state: PluginState): string {
   const limit = 10;
   const displayed = projects.slice(0, limit);
-  let message = `# Projects (${displayed.length}/${projects.length})\n\n`;
+  let message = `${t("project.list_title", { count: displayed.length, total: projects.length })}\n\n`;
   for (let i = 0; i < displayed.length; i++) {
     const project = displayed[i];
     const isCurrent =
@@ -1285,22 +1289,21 @@ function formatProjects(projects: ProjectRecord[], state: PluginState): string {
     const marker = isCurrent ? " ✅" : "";
     message += `${i + 1}. **${project.name ?? path.basename(project.worktree)}**${marker}\n   \`${project.worktree}\`\n`;
   }
-  message +=
-    "\nUse `/project <number>` to select a project, or `/project <path>` to select by path.";
+  message += `\n${t("project.select_hint")}`;
   return message;
 }
 
 function formatSessions(sessions: SessionRecord[], state: PluginState): string {
   const limit = 10;
   const displayed = sessions.slice(0, limit);
-  let message = `# Sessions (${displayed.length}/${sessions.length})\n\n`;
+  let message = `${t("session.list_title", { count: displayed.length, total: sessions.length })}\n\n`;
   for (let i = 0; i < displayed.length; i++) {
     const session = displayed[i];
     const isCurrent = state.currentSession?.id === session.id;
     const marker = isCurrent ? " ✅" : "";
     message += `${i + 1}. **${session.title}**${marker}\n   \`${session.id}\`\n`;
   }
-  message += "\nUse `/session <number>` to select a session.";
+  message += `\n${t("session.select_hint")}`;
   return message;
 }
 
@@ -1490,7 +1493,7 @@ async function handleCommand(params: {
     try {
       const project = await ensureCurrentProject(client, config, state);
       if (!project?.worktree) {
-        return "No project is selected. Use `/projects` first.";
+        return t("agent.no_project");
       }
 
       state.currentProject = project;
@@ -1608,23 +1611,23 @@ async function handleCommand(params: {
       const project = state.currentProject;
       const agents = await fetchAgents(client, project);
       if (agents.length === 0) {
-        return "No agents available from OpenCode.";
+        return t("opencode.no_agents");
       }
 
       const args = splitArgs(command.args);
       if (args.length === 0) {
-        return "Usage: /agent <number>. Use /agents to list available agents.";
+        return t("agent.usage");
       }
 
       const index = Number(args[0]);
       if (!Number.isInteger(index) || index < 1 || index > agents.length) {
-        return `Invalid agent index. Use /agents to inspect the current list.`;
+        return t("agent.invalid_index");
       }
 
       const selected = agents[index - 1];
       state.currentAgent = selected.name;
       await savePluginState(state, logger);
-      return `Selected agent ${selected.name}.`;
+      return t("agent.select_success", { name: selected.name });
     } catch (error) {
       return `Failed to select agent: ${String(error)}`;
     }
@@ -1632,14 +1635,14 @@ async function handleCommand(params: {
 
   if (command.name === "rename") {
     if (!state.currentSession) {
-      return "No session is selected. Use `/sessions` to select a session first.";
+      return t("agent.no_session");
     }
     renameManager.startWaiting(
       state.currentSession.id,
       state.currentSession.directory,
       state.currentSession.title,
     );
-    return `Please enter new title for session "${state.currentSession.title}".\n\n💡 Use /stop to cancel.`;
+    return t("agent.rename_prompt", { title: state.currentSession.title });
   }
 
   if (command.name === "task") {
@@ -1719,7 +1722,12 @@ async function handleCommand(params: {
     }
     const emoji = PERMISSION_EMOJI_MAP[request.permission] || "🔐";
     const patterns = request.patterns.join("\n");
-    return `🔐 **Pending Permission Request**\n\n**Request ID:** ${request.id}\n**Type:** ${emoji} ${request.permission}\n\n**Patterns:**\n\`\`\`\n${patterns}\n\`\`\`\n\nReply with:\n**/1** - Allow once\n**/2** - Always allow\n**/3** - Reject`;
+    return t("permission.request_prompt", {
+      id: request.id,
+      emoji,
+      type: request.permission,
+      patterns,
+    });
   }
 
   return undefined;

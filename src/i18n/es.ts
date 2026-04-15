@@ -550,4 +550,51 @@ export const es: I18nDictionary = {
   "flow.rename_cancelled": "Rename flow cancelled.",
   "flow.permission_cancelled": "Pending permission request cleared.",
   "flow.no_active": "No active flow to stop. Use /abort to abort a session.",
+
+  "help.title": "# OpenClawCode Channel Commands",
+  "help.opencode": "Enter OpenCode intercept mode for this conversation",
+  "help.exit": "Leave OpenCode intercept mode for this conversation",
+  "help.help": "Show this command list",
+  "help.status": "Show OpenCode health and current plugin state",
+  "help.projects": "List OpenCode projects",
+  "help.project": "Select a project by number or path",
+  "help.sessions": "List sessions in the current project",
+  "help.session": "Select a session by number",
+  "help.agents": "List available agents",
+  "help.agent": "Select the indexed agent",
+  "help.models": "List available models",
+  "help.model": "Select the indexed model",
+  "help.new": "Create and select a new OpenCode session",
+  "help.rename": "Rename the current session (interactive)",
+  "help.stop": "Abort the current OpenCode session or cancel active flow",
+  "help.task": "Start scheduled task creation flow",
+  "help.tasklist": "View and manage scheduled tasks",
+  "help.permission": "Show pending permission request or risk status",
+  "help.commands": "List project commands exposed by OpenCode",
+  "help.permission_replies": "**Permission Replies:**",
+  "help.permission_1": "Allow once",
+  "help.permission_2": "Always allow",
+  "help.permission_3": "Reject",
+  "help.intercept_hint":
+    "All commands except /opencode and /exit only work after intercept mode is enabled.",
+
+  "agent.list_title": "# Available Agents",
+  "agent.current": "Current: {current}",
+  "agent.select_hint": "Use `/agent <number>` to select an agent.",
+  "agent.invalid_index": "Invalid agent index. Use /agents to inspect the current list.",
+  "agent.usage": "Usage: /agent <number>. Use /agents to list available agents.",
+  "agent.no_session": "No session is selected. Use `/sessions` to select a session first.",
+  "agent.rename_prompt": 'Please enter new title for session "{title}".\n\n💡 Use /stop to cancel.',
+  "agent.no_project": "No project is selected. Use `/projects` first.",
+
+  "permission.request_prompt":
+    "🔐 **Pending Permission Request**\n\n**Request ID:** {id}\n**Type:** {emoji} {type}\n\n**Patterns:**\n```\n{patterns}\n```\n\nReply with:\n**/1** - Allow once\n**/2** - Always allow\n**/3** - Reject",
+  "permission.reply_hint":
+    "🔐 **Permission Request**\n\n**Type:** {emoji} {type}\n\n**Patterns:**\n```\n{patterns}\n```\n\nPlease reply with:\n**/1** - Allow once\n**/2** - Always allow\n**/3** - Reject",
+
+  "project.list_title": "# Projects ({count}/{total})",
+  "project.select_hint":
+    "Use `/project <number>` to select a project, or `/project <path>` to select by path.",
+  "session.list_title": "# Sessions ({count}/{total})",
+  "session.select_hint": "Use `/session <number>` to select a session.",
 };
