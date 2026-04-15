@@ -35,22 +35,26 @@ openclaw config set plugins.entries.openclawcode.enabled true
 
 ## Configuration
 
-All configuration is optional:
+### Required
 
 ```bash
-# Enable plugin
+# Enable plugin (required - plugin is disabled by default)
 openclaw config set plugins.entries.openclawcode.enabled true
+```
 
+### Optional
+
+```bash
 # Set OpenCode server URL (default: http://localhost:4096)
 openclaw config set plugins.entries.openclawcode.config.opencodeBaseUrl "http://localhost:4096"
 
-# Set interface language (en, zh, zh-TW, de, es, fr, ru)
+# Set interface language (default: en)
 openclaw config set plugins.entries.openclawcode.config.locale zh
 
 # Set default project directory
 openclaw config set plugins.entries.openclawcode.config.defaultProjectDirectory "/path/to/project"
 
-# Scope filters (empty = all)
+# Scope filters (empty = all channels/accounts/conversations)
 openclaw config set plugins.entries.openclawcode.config.channels '["telegram", "discord"]'
 openclaw config set plugins.entries.openclawcode.config.accountIds '["account1"]'
 openclaw config set plugins.entries.openclawcode.config.conversationIds '["conv1"]'
