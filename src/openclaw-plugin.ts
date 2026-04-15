@@ -31,7 +31,7 @@ import {
 } from "./task/proactive-risk-registry.js";
 import { ensureProjectByPath } from "./project/manager.js";
 import { renameManager } from "./rename/manager.js";
-import { t } from "./i18n/index.js";
+import { t, resolveSupportedLocale, setRuntimeLocale } from "./i18n/index.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUILD_INFO_PATH = path.join(PACKAGE_ROOT, "dist", "build-info.json");
@@ -93,6 +93,7 @@ type PluginConfig = {
   opencodeUsername?: string;
   opencodePassword?: string;
   defaultProjectDirectory?: string;
+  locale?: string;
 };
 
 type ProjectState = {
@@ -1745,6 +1746,16 @@ export default definePluginEntry({
     if (config.enabled === false) {
       logger.info("[OpenClawCode] plugin disabled by config.enabled=false");
       return;
+    }
+
+    if (config.locale) {
+      const supportedLocale = resolveSupportedLocale(config.locale);
+      if (supportedLocale) {
+        setRuntimeLocale(supportedLocale);
+        logger.info(`[OpenClawCode] locale set to ${supportedLocale}`);
+      } else {
+        logger.warn(`[OpenClawCode] unsupported locale: ${config.locale}, using default`);
+      }
     }
 
     scheduledTaskRuntime.setNotificationCallback(async (text: string) => {
