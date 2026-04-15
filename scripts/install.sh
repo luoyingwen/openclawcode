@@ -12,7 +12,7 @@ ERROR='\033[38;2;230;57;70m'
 NC='\033[0m'
 
 PLUGIN_ID="openclawcode"
-PACKAGE_NAME="@grinev/openclaw-opencode-plugin"
+PACKAGE_NAME="@luoyingwen/openclaw-opencode-plugin"
 
 check_build() {
     if [[ ! -f "${PLUGIN_DIR}/dist/openclaw-plugin.js" ]]; then

@@ -14,7 +14,7 @@ OpenClaw plugin for OpenCode integration. Intercepts channel messages and routes
 ### From npm (recommended)
 
 ```bash
-openclaw plugins install @grinev/openclaw-opencode-plugin
+openclaw plugins install @luoyingwen/openclaw-opencode-plugin
 ```
 
 ### Local testing
@@ -51,7 +51,7 @@ When the plugin is enabled and you enter intercept mode (send "进入opencode"),
 
 - `/status` - Show OpenCode status
 - `/projects [index]` - List/select projects
-- `/sessions [index]` - List/select sessions  
+- `/sessions [index]` - List/select sessions
 - `/new` - Create new session
 - `/abort` - Abort current session
 - `/commands` - Show available commands
