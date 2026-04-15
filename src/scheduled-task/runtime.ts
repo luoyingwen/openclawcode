@@ -1,5 +1,3 @@
-import { config } from "../config.js";
-import { formatSummaryWithMode } from "../summary/formatter.js";
 import { t } from "../i18n/index.js";
 import { logger } from "../utils/logger.js";
 import { safeBackgroundTask } from "../utils/safe-background-task.js";

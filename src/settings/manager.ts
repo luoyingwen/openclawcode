@@ -16,11 +16,6 @@ export interface SessionInfo {
   directory: string;
 }
 
-export interface ServerProcessInfo {
-  pid: number;
-  startTime: string; // ISO string
-}
-
 export interface SessionDirectoryCacheInfo {
   version: 1;
   lastSyncedUpdatedAt: number;
@@ -42,7 +37,6 @@ export interface Settings {
   currentModel?: ModelInfo;
   pinnedMessageId?: number;
   ttsEnabled?: boolean;
-  serverProcess?: ServerProcessInfo;
   sessionDirectoryCache?: SessionDirectoryCacheInfo;
   scheduledTasks?: ScheduledTask[];
   userChatMappings?: Record<string, UserChatMapping>; // userId -> mapping
@@ -168,20 +162,6 @@ export function setPinnedMessageId(messageId: number): void {
 
 export function clearPinnedMessageId(): void {
   currentSettings.pinnedMessageId = undefined;
-  void writeSettingsFile(currentSettings);
-}
-
-export function getServerProcess(): ServerProcessInfo | undefined {
-  return currentSettings.serverProcess;
-}
-
-export function setServerProcess(processInfo: ServerProcessInfo): void {
-  currentSettings.serverProcess = processInfo;
-  void writeSettingsFile(currentSettings);
-}
-
-export function clearServerProcess(): void {
-  currentSettings.serverProcess = undefined;
   void writeSettingsFile(currentSettings);
 }
 
