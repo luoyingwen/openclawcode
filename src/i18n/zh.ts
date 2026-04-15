@@ -445,7 +445,7 @@ export const zh: I18nDictionary = {
     "已进入 opencode 模式。现在这个会话里的所有消息都会先被 OpenClawCode 拦截并发送给 OpenCode。",
   "opencode.leave_mode": "已离开 opencode 模式。后续消息将不再由 OpenClawCode 拦截。",
   "opencode.leave_mode_inactive": "当前不在 opencode 模式。",
-  "opencode.processing": "正在处理...",
+  "opencode.processing": "正在处理...\n\n💡 当前处于 OpenCode 拦截模式，输入 /exit 退出。",
   "opencode.response_empty": "OpenCode 已接受消息，但返回的响应为空。",
   "opencode.abort_unconfirmed": "中止请求已发送，但 OpenCode 未确认停止。",
   "opencode.abort_timeout": "等待 OpenCode 中止请求超时。",

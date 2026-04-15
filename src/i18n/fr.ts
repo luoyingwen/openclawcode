@@ -502,7 +502,8 @@ export const fr: I18nDictionary = {
   "opencode.leave_mode":
     "Left OpenCode mode. Messages will no longer be intercepted by OpenClawCode.",
   "opencode.leave_mode_inactive": "Not in OpenCode mode.",
-  "opencode.processing": "Processing...",
+  "opencode.processing":
+    "Processing...\n\n💡 You are in OpenCode intercept mode. Enter /exit to quit.",
   "opencode.response_empty": "OpenCode accepted the message, but the response was empty.",
   "opencode.abort_unconfirmed": "Abort request was sent, but OpenCode did not confirm the stop.",
   "opencode.abort_timeout": "Abort request timed out while waiting for OpenCode.",
