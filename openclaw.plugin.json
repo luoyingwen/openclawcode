@@ -48,6 +48,11 @@
       "defaultProjectDirectory": {
         "type": "string",
         "description": "Default OpenCode project directory"
+      },
+      "locale": {
+        "type": "string",
+        "description": "Interface language (en, zh, zh-TW, de, es, fr, ru)",
+        "enum": ["en", "zh", "zh-TW", "de", "es", "fr", "ru"]
       }
     }
   }

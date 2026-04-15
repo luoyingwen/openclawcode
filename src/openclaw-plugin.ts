@@ -305,6 +305,7 @@ function readPluginConfig(value: unknown): PluginConfig {
     opencodeUsername: normalizeText(record.opencodeUsername),
     opencodePassword: normalizeText(record.opencodePassword),
     defaultProjectDirectory: normalizeText(record.defaultProjectDirectory),
+    locale: normalizeText(record.locale),
   };
 }
 
@@ -574,7 +575,7 @@ export function resolvePromptProgressMessage(
   if (part?.type === "reasoning" && !tracker.thinkingSent) {
     tracker.thinkingSent = true;
     return {
-      text: "💭 正在思考...",
+      text: t("bot.thinking"),
       format: "text",
     };
   }
@@ -1728,6 +1729,23 @@ export default definePluginEntry({
   id: "openclawcode",
   name: "OpenClawCode",
   description: "OpenCode command handling for OpenClaw channel messages",
+  configSchema: {
+    jsonSchema: {
+      type: "object",
+      properties: {
+        enabled: { type: "boolean" },
+        channels: { type: "array", items: { type: "string" } },
+        accountIds: { type: "array", items: { type: "string" } },
+        conversationIds: { type: "array", items: { type: "string" } },
+        opencodeBaseUrl: { type: "string" },
+        opencodeUsername: { type: "string" },
+        opencodePassword: { type: "string" },
+        defaultProjectDirectory: { type: "string" },
+        locale: { type: "string", enum: ["en", "zh", "zh-TW", "de", "es", "fr", "ru"] },
+      },
+      additionalProperties: false,
+    },
+  },
 
   register(api) {
     const logger = api.logger;
