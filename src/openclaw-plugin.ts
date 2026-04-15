@@ -18,11 +18,7 @@ import {
   isUserInTaskListFlow,
   clearOpenClawCodeTaskListState,
 } from "./task/tasklist.js";
-import {
-  setCurrentProject,
-  setCurrentSession,
-  setCurrentModel,
-} from "./settings/manager.js";
+import { setCurrentProject, setCurrentSession, setCurrentModel } from "./settings/manager.js";
 import { getStoredModel, getModelSelectionLists } from "./model/manager.js";
 import type { FavoriteModel } from "./model/types.js";
 import { listScheduledTasks } from "./scheduled-task/store.js";
@@ -33,6 +29,9 @@ import {
   getProactiveRisk,
   isProactivePermissionError,
 } from "./task/proactive-risk-registry.js";
+import { ensureProjectByPath } from "./project/manager.js";
+import { renameManager } from "./rename/manager.js";
+import { t } from "./i18n/index.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUILD_INFO_PATH = path.join(PACKAGE_ROOT, "dist", "build-info.json");
@@ -223,7 +222,9 @@ type ProgressEvent = {
 function resolvePluginVersion(): string {
   try {
     const packageJsonPath = path.join(PACKAGE_ROOT, "package.json");
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as { version?: unknown };
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+      version?: unknown;
+    };
     return typeof packageJson.version === "string" && packageJson.version.trim()
       ? packageJson.version.trim()
       : "0.0.0";
@@ -241,7 +242,10 @@ export function readBuildInfoFile(filePath: string): BuildInfoRecord | null {
   }
 }
 
-export function formatDiagnosticVersion(buildInfo: BuildInfoRecord | null, fallbackVersion: string): string {
+export function formatDiagnosticVersion(
+  buildInfo: BuildInfoRecord | null,
+  fallbackVersion: string,
+): string {
   const version =
     typeof buildInfo?.version === "string" && buildInfo.version.trim()
       ? buildInfo.version.trim()
@@ -308,11 +312,17 @@ function matchesScope(config: PluginConfig, ctx: ScopeContext): boolean {
   const normalizedAccountId = normalizeText(ctx.accountId)?.toLowerCase();
   const normalizedConversationId = normalizeText(ctx.conversationId)?.toLowerCase();
 
-  if (config.channels?.length && (!normalizedChannel || !config.channels.includes(normalizedChannel))) {
+  if (
+    config.channels?.length &&
+    (!normalizedChannel || !config.channels.includes(normalizedChannel))
+  ) {
     return false;
   }
 
-  if (config.accountIds?.length && (!normalizedAccountId || !config.accountIds.includes(normalizedAccountId))) {
+  if (
+    config.accountIds?.length &&
+    (!normalizedAccountId || !config.accountIds.includes(normalizedAccountId))
+  ) {
     return false;
   }
 
@@ -331,11 +341,17 @@ function explainScopeMismatch(config: PluginConfig, ctx: ScopeContext): string |
   const normalizedAccountId = normalizeText(ctx.accountId)?.toLowerCase();
   const normalizedConversationId = normalizeText(ctx.conversationId)?.toLowerCase();
 
-  if (config.channels?.length && (!normalizedChannel || !config.channels.includes(normalizedChannel))) {
+  if (
+    config.channels?.length &&
+    (!normalizedChannel || !config.channels.includes(normalizedChannel))
+  ) {
     return `channel mismatch current=${normalizedChannel ?? "unknown"} expected=${config.channels.join(",")}`;
   }
 
-  if (config.accountIds?.length && (!normalizedAccountId || !config.accountIds.includes(normalizedAccountId))) {
+  if (
+    config.accountIds?.length &&
+    (!normalizedAccountId || !config.accountIds.includes(normalizedAccountId))
+  ) {
     return `account mismatch current=${normalizedAccountId ?? "unknown"} expected=${config.accountIds.join(",")}`;
   }
 
@@ -370,7 +386,10 @@ function loadPluginState(logger: PluginLogger): PluginState {
       currentProject:
         loaded.currentProject && typeof loaded.currentProject === "object"
           ? {
-              id: normalizeText(loaded.currentProject.id) ?? normalizeText(loaded.currentProject.worktree) ?? "unknown-project",
+              id:
+                normalizeText(loaded.currentProject.id) ??
+                normalizeText(loaded.currentProject.worktree) ??
+                "unknown-project",
               worktree: normalizeText(loaded.currentProject.worktree) ?? "",
               name: normalizeText(loaded.currentProject.name),
             }
@@ -411,7 +430,11 @@ async function savePluginState(state: PluginState, logger: PluginLogger): Promis
 }
 
 function deriveUserIdFromRoute(route: FollowUpRoute): string {
-  const parts = [route.channelId ?? "unknown", route.accountId ?? "unknown", route.conversationId ?? "unknown"];
+  const parts = [
+    route.channelId ?? "unknown",
+    route.accountId ?? "unknown",
+    route.conversationId ?? "unknown",
+  ];
   return parts.join(":");
 }
 
@@ -466,7 +489,10 @@ export function createPromptProgressTracker(rootSessionId: string): PromptProgre
   };
 }
 
-function trackChildSessionFromEvent(event: SessionLifecycleEvent, tracker: PromptProgressTracker): void {
+function trackChildSessionFromEvent(
+  event: SessionLifecycleEvent,
+  tracker: PromptProgressTracker,
+): void {
   const eventType = normalizeText(event.type);
   if (eventType !== "session.created" && eventType !== "session.updated") {
     return;
@@ -502,7 +528,9 @@ function formatToolLabel(tool: string): string {
   }
 }
 
-function buildToolProgressMessage(part: NonNullable<ProgressEvent["properties"]>["part"]): string | null {
+function buildToolProgressMessage(
+  part: NonNullable<ProgressEvent["properties"]>["part"],
+): string | null {
   const tool = normalizeText(part?.tool);
   const callId = normalizeText(part?.callID);
   if (!tool || !callId) {
@@ -586,7 +614,10 @@ async function streamPromptProgress(params: {
   const { api, client, route, session, logger, abortSignal } = params;
 
   try {
-    const result = await client.event.subscribe({ directory: session.directory }, { signal: abortSignal });
+    const result = await client.event.subscribe(
+      { directory: session.directory },
+      { signal: abortSignal },
+    );
     if (!result.stream) {
       logger.warn(`[OpenClawCode] event.subscribe returned no stream for session=${session.id}`);
       return;
@@ -607,7 +638,9 @@ async function streamPromptProgress(params: {
           const patterns = request.patterns.join("\n");
           const message = `🔐 **Permission Request**\n\n**Type:** ${emoji} ${request.permission}\n\n**Patterns:**\n\`\`\`\n${patterns}\n\`\`\`\n\nPlease reply with:\n**/1** - Allow once\n**/2** - Always allow\n**/3** - Reject`;
           await sendFollowUpMessage(api, route, { text: message }, logger);
-          logger.info(`[OpenClawCode] Permission request sent: requestID=${request.id}, type=${request.permission}`);
+          logger.info(
+            `[OpenClawCode] Permission request sent: requestID=${request.id}, type=${request.permission}`,
+          );
         }
         continue;
       }
@@ -827,6 +860,7 @@ async function ensureCurrentProject(
   client: ReturnType<typeof createClient>,
   config: PluginConfig,
   state: PluginState,
+  logger?: PluginLogger,
 ): Promise<ProjectState | null> {
   if (state.currentProject?.worktree) {
     return state.currentProject;
@@ -837,6 +871,11 @@ async function ensureCurrentProject(
     return null;
   }
 
+  if (logger?.debug) {
+    logger.debug(
+      `[ensureCurrentProject] fetching projects for default directory: ${configuredDirectory}`,
+    );
+  }
   const configuredKey = normalizePathForMatch(configuredDirectory);
   const projects = await fetchProjects(client);
   const matched = projects.find(
@@ -867,7 +906,8 @@ async function ensureCurrentSession(
 ): Promise<SessionState> {
   if (
     state.currentSession &&
-    normalizePathForMatch(state.currentSession.directory) === normalizePathForMatch(project.worktree)
+    normalizePathForMatch(state.currentSession.directory) ===
+      normalizePathForMatch(project.worktree)
   ) {
     return state.currentSession;
   }
@@ -889,17 +929,30 @@ async function preparePromptSession(params: {
   client: ReturnType<typeof createClient>;
   config: PluginConfig;
   state: PluginState;
+  logger?: PluginLogger;
 }): Promise<SessionState> {
-  const project = await ensureCurrentProject(params.client, params.config, params.state);
+  if (params.logger?.debug) {
+    params.logger.debug(`[preparePromptSession] ensuring project for prompt`);
+  }
+  const project = await ensureCurrentProject(
+    params.client,
+    params.config,
+    params.state,
+    params.logger,
+  );
   if (!project?.worktree) {
-    throw new Error(
-      "No project is selected. Set plugins.entries.openclawcode.config.defaultProjectDirectory or use /projects <index>.",
-    );
+    throw new Error(t("project.not_selected_config"));
   }
 
   params.state.currentProject = project;
+  if (params.logger?.debug) {
+    params.logger.debug(`[preparePromptSession] ensuring session for project: ${project.worktree}`);
+  }
   const session = await ensureCurrentSession(params.client, project, params.state);
   params.state.currentSession = session;
+  if (params.logger?.debug) {
+    params.logger.debug(`[preparePromptSession] session ready: ${session.id}`);
+  }
   return session;
 }
 
@@ -943,7 +996,7 @@ async function abortCurrentSession(
   state: PluginState,
 ): Promise<string> {
   if (!state.currentSession) {
-    return "No active OpenCode session is selected.";
+    return t("opencode.no_active_session");
   }
 
   const controller = new AbortController();
@@ -961,12 +1014,12 @@ async function abortCurrentSession(
       return `OpenCode abort failed: ${String(error)}`;
     }
     if (data !== true) {
-      return "Abort request was sent, but OpenCode did not confirm the stop.";
+      return t("opencode.abort_unconfirmed");
     }
     return `Aborted session ${state.currentSession.title}.`;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      return "Abort request timed out while waiting for OpenCode.";
+      return t("opencode.abort_timeout");
     }
     return `Abort request failed: ${String(error)}`;
   } finally {
@@ -1008,7 +1061,15 @@ function formatAgents(agents: AgentRecord[], currentAgent: string | undefined): 
     const marker = agent.name === currentAgent ? " ✅" : "";
     return `${index + 1}. ${agent.name}${marker}`;
   });
-  return ["# Available Agents", "", ...lines, "", `Current: ${currentAgent ?? "build"}`].join("\n");
+  return [
+    "# Available Agents",
+    "",
+    ...lines,
+    "",
+    `Current: ${currentAgent ?? "build"}`,
+    "",
+    "Use `/agent <number>` to select an agent.",
+  ].join("\n");
 }
 
 function formatHelpText(): string {
@@ -1020,19 +1081,18 @@ function formatHelpText(): string {
     "- /help - Show this command list",
     "- /status - Show OpenCode health and current plugin state",
     "- /projects - List OpenCode projects",
-    "- /projects <index> - Select the indexed project",
+    "- /project <number or path> - Select a project by number or path",
     "- /sessions - List sessions in the current project",
-    "- /sessions <index> - Select the indexed session",
+    "- /session <number> - Select a session by number",
     "- /agents - List available agents",
-    "- /agent <index> - Select the indexed agent",
+    "- /agent <number> - Select the indexed agent",
     "- /models - List available models",
-    "- /model <index> - Select the indexed model",
+    "- /model <number> - Select the indexed model",
     "- /new - Create and select a new OpenCode session",
-    "- /rename <title> - Rename the current session",
-    "- /abort - Abort the current OpenCode session",
+    "- /rename - Rename the current session (interactive)",
+    "- /stop - Abort the current OpenCode session or cancel active flow",
     "- /task - Start scheduled task creation flow",
     "- /tasklist - View and manage scheduled tasks",
-    "- /stop - Cancel active flow or pending permission",
     "- /permission - Show pending permission request or risk status",
     "- /commands - List project commands exposed by OpenCode",
     "",
@@ -1053,7 +1113,7 @@ async function sendPromptToOpencode(params: {
   content: string;
 }): Promise<string> {
   const { client, config, state, logger, content } = params;
-  const session = await preparePromptSession({ client, config, state });
+  const session = await preparePromptSession({ client, config, state, logger });
 
   logger.info(
     `[OpenClawCode] forwarding message to OpenCode session=${session.id} directory=${session.directory} length=${content.length}`,
@@ -1073,7 +1133,7 @@ async function sendPromptToOpencode(params: {
     return responseText;
   }
 
-  return "OpenCode accepted the message, but the response was empty.";
+  return t("opencode.response_empty");
 }
 
 async function sendAsyncPromptToOpencodeWithProgress(params: {
@@ -1086,7 +1146,7 @@ async function sendAsyncPromptToOpencodeWithProgress(params: {
   content: string;
 }): Promise<string> {
   const { api, client, config, state, logger, route, content } = params;
-  const session = await preparePromptSession({ client, config, state });
+  const session = await preparePromptSession({ client, config, state, logger });
 
   const progressAbortController = new AbortController();
   const progressTask = streamPromptProgress({
@@ -1109,11 +1169,27 @@ async function sendAsyncPromptToOpencodeWithProgress(params: {
       parts: [{ type: "text", text: content }],
     });
     if (error || !data) {
-      throw error ?? new Error("OpenCode did not return a prompt response");
+      let errorDetail: string;
+      if (error) {
+        if (typeof error === "object" && Object.keys(error as object).length === 0) {
+          errorDetail = "empty error object (server may be restarting)";
+        } else if (error instanceof Error) {
+          errorDetail = `${error.name}: ${error.message}`;
+        } else {
+          errorDetail = JSON.stringify(error);
+        }
+      } else {
+        errorDetail = "no data returned";
+      }
+      logger.error(
+        `[OpenClawCode] session.prompt failed: session=${session.id} directory=${session.directory} error=${errorDetail}`,
+      );
+      throw new Error(`OpenCode session.prompt failed: ${errorDetail}`);
     }
 
+    logger.info(`[OpenClawCode] session.prompt success: session=${session.id}`);
     const responseText = collectResponseText((data.parts ?? []) as ResponseTextPart[]);
-    return responseText || "OpenCode accepted the message, but the response was empty.";
+    return responseText || t("opencode.response_empty");
   } finally {
     progressAbortController.abort();
     await progressTask;
@@ -1166,19 +1242,29 @@ function schedulePromptFollowUp(params: {
           `[OpenClawCode] async prompt follow-up sent channel=${route.channelId ?? "unknown"} conversation=${route.conversationId ?? "unknown"}`,
         );
       } catch (error) {
-        const errorText = `OpenClawCode prompt failed: ${String(error)}`;
-        logger.error(`[OpenClawCode] async prompt failed: ${String(error)}`);
-        await sendFollowUpMessage(
-          api,
-          route,
-          {
-            text: errorText,
-            format: "text",
-          },
-          logger,
-        ).catch((sendError) => {
-          logger.error(`[OpenClawCode] async prompt error follow-up failed: ${String(sendError)}`);
-        });
+        const errorDetails =
+          error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+        const errorText = `❌ OpenClawCode request failed.\n\n**Error:** ${errorDetails}\n\nThis may indicate OpenCode server is restarting or unavailable. Try again in a few seconds.`;
+        logger.error(`[OpenClawCode] async prompt failed: ${errorDetails}`);
+        try {
+          await sendFollowUpMessage(
+            api,
+            route,
+            {
+              text: errorText,
+              format: "text",
+            },
+            logger,
+          );
+        } catch (sendError) {
+          const sendErrorDetails =
+            sendError instanceof Error
+              ? `${sendError.name}: ${sendError.message}`
+              : String(sendError);
+          logger.error(
+            `[OpenClawCode] async prompt error follow-up ALSO failed: ${sendErrorDetails}`,
+          );
+        }
       }
     })();
   });
@@ -1192,11 +1278,13 @@ function formatProjects(projects: ProjectRecord[], state: PluginState): string {
     const project = displayed[i];
     const isCurrent =
       state.currentProject &&
-      normalizePathForMatch(state.currentProject.worktree) === normalizePathForMatch(project.worktree);
+      normalizePathForMatch(state.currentProject.worktree) ===
+        normalizePathForMatch(project.worktree);
     const marker = isCurrent ? " ✅" : "";
     message += `${i + 1}. **${project.name ?? path.basename(project.worktree)}**${marker}\n   \`${project.worktree}\`\n`;
   }
-  message += "\nUse `/projects <number>` to select a project.";
+  message +=
+    "\nUse `/project <number>` to select a project, or `/project <path>` to select by path.";
   return message;
 }
 
@@ -1210,7 +1298,7 @@ function formatSessions(sessions: SessionRecord[], state: PluginState): string {
     const marker = isCurrent ? " ✅" : "";
     message += `${i + 1}. **${session.title}**${marker}\n   \`${session.id}\`\n`;
   }
-  message += "\nUse `/sessions <number>` to select a session.";
+  message += "\nUse `/session <number>` to select a session.";
   return message;
 }
 
@@ -1218,7 +1306,9 @@ function formatCommands(commands: CommandRecord[]): string {
   return [
     "# OpenCode Commands",
     "",
-    ...commands.map((command) => `- /${command.name}${command.description ? ` - ${command.description}` : ""}`),
+    ...commands.map(
+      (command) => `- /${command.name}${command.description ? ` - ${command.description}` : ""}`,
+    ),
   ].join("\n");
 }
 
@@ -1243,12 +1333,12 @@ async function handleCommand(params: {
     if (hasPendingPermissionRequest(route)) {
       const request = getPendingPermissionRequest(route);
       if (!request) {
-        return "No pending permission request.";
+        return t("opencode.no_pending_permission");
       }
       const session = state.currentSession;
       if (!session) {
         clearPendingPermissionRequest(route);
-        return "No active session. Permission request cleared.";
+        return t("opencode.permission_cleared");
       }
       try {
         const client = createClient(config);
@@ -1273,7 +1363,7 @@ async function handleCommand(params: {
         return `Permission reply error: ${String(error)}`;
       }
     }
-    return "⚠️ No pending permission request.";
+    return t("opencode.no_pending_permission");
   }
 
   const command = parseSlashCommand(content);
@@ -1315,14 +1405,28 @@ async function handleCommand(params: {
     try {
       const projects = await fetchProjects(client);
       if (projects.length === 0) {
-        return "OpenCode did not return any projects.";
+        return t("opencode.no_projects");
       }
+      return formatProjects(projects, state);
+    } catch (error) {
+      return `Failed to fetch projects from OpenCode: ${String(error)}`;
+    }
+  }
 
-      const args = splitArgs(command.args);
-      if (args.length > 0) {
-        const index = Number(args[0]);
-        if (!Number.isInteger(index) || index < 1 || index > projects.length) {
-          return `Invalid project index. Use /projects to inspect the current list.`;
+  if (command.name === "project") {
+    const trimmedArg = command.args.trim();
+
+    if (!trimmedArg) {
+      return t("project.select_prompt");
+    }
+
+    const index = Number(trimmedArg);
+
+    if (!Number.isNaN(index) && index >= 1) {
+      try {
+        const projects = await fetchProjects(client);
+        if (index > projects.length) {
+          return t("project.index_not_found", { index, total: projects.length });
         }
 
         const selected = projects[index - 1];
@@ -1333,12 +1437,34 @@ async function handleCommand(params: {
         };
         state.currentSession = undefined;
         await savePluginState(state, logger);
-        return `Selected project ${selected.name ?? path.basename(selected.worktree)} [${selected.worktree}].`;
+        return t("project.select_success", {
+          name: selected.name ?? path.basename(selected.worktree),
+          path: selected.worktree,
+        });
+      } catch (error) {
+        return t("project.select_error", { error: String(error) });
       }
+    }
 
-      return formatProjects(projects, state);
+    try {
+      const { project, isNew, pathCreated } = await ensureProjectByPath(trimmedArg);
+
+      state.currentProject = {
+        id: project.id,
+        worktree: project.worktree,
+        name: project.name,
+      };
+      state.currentSession = undefined;
+      await savePluginState(state, logger);
+
+      if (isNew) {
+        return t("project.created", { name: project.name, path: project.worktree });
+      } else {
+        return t("project.selected_existing", { name: project.name, path: project.worktree });
+      }
     } catch (error) {
-      return `Failed to fetch projects from OpenCode: ${String(error)}`;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return t("project.select_error", { error: errorMessage });
     }
   }
 
@@ -1346,7 +1472,7 @@ async function handleCommand(params: {
     try {
       const project = await ensureCurrentProject(client, config, state);
       if (!project?.worktree) {
-        return "No project is selected. Set plugins.entries.openclawcode.config.defaultProjectDirectory or use /projects <index>.";
+        return t("project.not_selected_config");
       }
 
       state.currentProject = project;
@@ -1362,30 +1488,13 @@ async function handleCommand(params: {
     try {
       const project = await ensureCurrentProject(client, config, state);
       if (!project?.worktree) {
-        return "No project is selected. Set plugins.entries.openclawcode.config.defaultProjectDirectory or use /projects <index>.";
+        return "No project is selected. Use `/projects` first.";
       }
 
       state.currentProject = project;
       const sessions = await fetchSessions(client, project);
       if (sessions.length === 0) {
-        return `No sessions found for ${project.worktree}.`;
-      }
-
-      const args = splitArgs(command.args);
-      if (args.length > 0) {
-        const index = Number(args[0]);
-        if (!Number.isInteger(index) || index < 1 || index > sessions.length) {
-          return `Invalid session index. Use /sessions to inspect the current list.`;
-        }
-
-        const selected = sessions[index - 1];
-        state.currentSession = {
-          id: selected.id,
-          title: selected.title,
-          directory: selected.directory,
-        };
-        await savePluginState(state, logger);
-        return `Selected session ${selected.title} [${selected.id}].`;
+        return t("session.no_sessions", { project: project.worktree });
       }
 
       return formatSessions(sessions, state);
@@ -1394,7 +1503,67 @@ async function handleCommand(params: {
     }
   }
 
-  if (command.name === "abort") {
+  if (command.name === "session") {
+    const trimmedArg = command.args.trim();
+    const index = Number(trimmedArg);
+
+    if (Number.isNaN(index) || index < 1) {
+      return t("session.select_prompt");
+    }
+    try {
+      const project = await ensureCurrentProject(client, config, state);
+      if (!project?.worktree) {
+        return t("project.not_selected");
+      }
+
+      state.currentProject = project;
+      const sessions = await fetchSessions(client, project);
+
+      if (index > sessions.length) {
+        return t("session.index_not_found", { index, total: sessions.length });
+      }
+
+      const selected = sessions[index - 1];
+
+      const { data: session, error: sessionError } = await client.session.get({
+        sessionID: selected.id,
+        directory: project.worktree,
+      });
+
+      if (sessionError || !session) {
+        return t("opencode.no_session_details");
+      }
+
+      state.currentSession = {
+        id: session.id,
+        title: session.title,
+        directory: project.worktree,
+      };
+      await savePluginState(state, logger);
+      return t("session.select_success", { title: session.title });
+    } catch (error) {
+      return t("session.select_error");
+    }
+  }
+
+  if (command.name === "stop") {
+    const userId = deriveUserIdFromRoute(route);
+    if (isUserInTaskFlow(userId)) {
+      clearTaskState(userId);
+      return t("flow.task_cancelled");
+    }
+    if (isUserInTaskListFlow(userId)) {
+      clearOpenClawCodeTaskListState(userId);
+      return t("flow.tasklist_cancelled");
+    }
+    if (renameManager.isWaitingForName()) {
+      renameManager.clear();
+      return t("flow.rename_cancelled");
+    }
+    if (hasPendingPermissionRequest(route)) {
+      clearPendingPermissionRequest(route);
+      return t("flow.permission_cancelled");
+    }
     const result = await abortCurrentSession(client, state);
     await savePluginState(state, logger);
     return result;
@@ -1404,7 +1573,7 @@ async function handleCommand(params: {
     try {
       const project = await ensureCurrentProject(client, config, state);
       if (!project?.worktree) {
-        return "No project is selected. Set plugins.entries.openclawcode.config.defaultProjectDirectory or use /projects <index>.";
+        return t("project.not_selected_config");
       }
 
       const commands = await fetchCommandList(client, project);
@@ -1423,7 +1592,7 @@ async function handleCommand(params: {
       const project = state.currentProject;
       const agents = await fetchAgents(client, project);
       if (agents.length === 0) {
-        return "No agents available from OpenCode.";
+        return t("opencode.no_agents");
       }
 
       return formatAgents(agents, state.currentAgent);
@@ -1461,31 +1630,14 @@ async function handleCommand(params: {
 
   if (command.name === "rename") {
     if (!state.currentSession) {
-      return "No session is selected. Use /sessions to select a session first.";
+      return "No session is selected. Use `/sessions` to select a session first.";
     }
-    const args = splitArgs(command.args);
-    if (args.length === 0) {
-      return `Current session title: "${state.currentSession.title}". Use /rename <new title> to rename.`;
-    }
-    const newTitle = command.args.trim();
-    if (!newTitle || newTitle.length < 1) {
-      return "New title must not be empty.";
-    }
-    try {
-      const { error } = await client.session.update({
-        sessionID: state.currentSession.id,
-        directory: state.currentSession.directory,
-        title: newTitle,
-      });
-      if (error) {
-        return `Failed to rename session: ${String(error)}`;
-      }
-      state.currentSession.title = newTitle;
-      await savePluginState(state, logger);
-      return `Session renamed to "${newTitle}".`;
-    } catch (error) {
-      return `Failed to rename session: ${String(error)}`;
-    }
+    renameManager.startWaiting(
+      state.currentSession.id,
+      state.currentSession.directory,
+      state.currentSession.title,
+    );
+    return `Please enter new title for session "${state.currentSession.title}".\n\n💡 Use /stop to cancel.`;
   }
 
   if (command.name === "task") {
@@ -1506,14 +1658,23 @@ async function handleCommand(params: {
       const lines: string[] = ["# Available Models"];
       if (lists.favorites.length > 0) {
         lines.push("", "**Favorites:**");
-        lists.favorites.forEach((m: FavoriteModel, i: number) => lines.push(`${i + 1}. ${m.providerID}/${m.modelID}`));
+        lists.favorites.forEach((m: FavoriteModel, i: number) =>
+          lines.push(`${i + 1}. ${m.providerID}/${m.modelID}`),
+        );
       }
       if (lists.recent.length > 0) {
         lines.push("", "**Recent:**");
-        lists.recent.forEach((m: FavoriteModel, i: number) => lines.push(`${i + 1}. ${m.providerID}/${m.modelID}`));
+        lists.recent.forEach((m: FavoriteModel, i: number) =>
+          lines.push(`${i + 1}. ${m.providerID}/${m.modelID}`),
+        );
       }
       const current = getStoredModel();
-      lines.push("", `**Current:** ${current ? `${current.providerID}/${current.modelID}` : "none"}`);
+      lines.push(
+        "",
+        `**Current:** ${current ? `${current.providerID}/${current.modelID}` : "none"}`,
+        "",
+        t("model.select_hint"),
+      );
       return lines.join("\n");
     } catch (error) {
       return `Failed to fetch models: ${String(error)}`;
@@ -1525,39 +1686,22 @@ async function handleCommand(params: {
       const lists = await getModelSelectionLists();
       const allModels: FavoriteModel[] = [...lists.favorites, ...lists.recent];
       if (allModels.length === 0) {
-        return "No models available. Use /models to check.";
+        return t("opencode.no_models");
       }
       const args = splitArgs(command.args);
       if (args.length === 0) {
-        return "Usage: /model <number>. Use /models to list available models.";
+        return t("model.select_prompt");
       }
       const index = Number(args[0]);
       if (!Number.isInteger(index) || index < 1 || index > allModels.length) {
-        return `Invalid model index. Use /models to inspect the list (max ${allModels.length}).`;
+        return t("model.index_invalid", { max: allModels.length });
       }
       const selected = allModels[index - 1];
       setCurrentModel(selected);
-      return `Selected model ${selected.providerID}/${selected.modelID}.`;
+      return t("model.select_success", { provider: selected.providerID, model: selected.modelID });
     } catch (error) {
       return `Failed to select model: ${String(error)}`;
     }
-  }
-
-  if (command.name === "stop") {
-    const userId = deriveUserIdFromRoute(route);
-    if (isUserInTaskFlow(userId)) {
-      clearTaskState(userId);
-      return "Task creation flow cancelled.";
-    }
-    if (isUserInTaskListFlow(userId)) {
-      clearOpenClawCodeTaskListState(userId);
-      return "Task list view cancelled.";
-    }
-    if (hasPendingPermissionRequest(route)) {
-      clearPendingPermissionRequest(route);
-      return "Pending permission request cleared.";
-    }
-    return "No active flow to stop. Use /abort to abort a session.";
   }
 
   if (command.name === "permission") {
@@ -1569,7 +1713,7 @@ async function handleCommand(params: {
       if (risk) {
         return `No pending permission request, but proactive risk detected:\n\n**Level:** ${risk.level}\n**Reason:** ${risk.reason}\n**Source:** ${risk.source}\n\nSend a message to clear the risk and restore proactive messaging capability.`;
       }
-      return "No pending permission request. Reply /1, /2, or /3 when a permission prompt appears.";
+      return t("opencode.permission_reply_hint");
     }
     const emoji = PERMISSION_EMOJI_MAP[request.permission] || "🔐";
     const patterns = request.patterns.join("\n");
@@ -1590,10 +1734,12 @@ export default definePluginEntry({
     const state = loadPluginState(logger);
 
     logger.info(
-      `[OpenClawCode] register start version=${DIAGNOSTIC_VERSION} features=thinking,tool-progress,done config=${JSON.stringify({
-        ...config,
-        opencodePassword: config.opencodePassword ? "***" : undefined,
-      })}`,
+      `[OpenClawCode] register start version=${DIAGNOSTIC_VERSION} features=thinking,tool-progress,done config=${JSON.stringify(
+        {
+          ...config,
+          opencodePassword: config.opencodePassword ? "***" : undefined,
+        },
+      )}`,
     );
 
     if (config.enabled === false) {
@@ -1614,11 +1760,16 @@ export default definePluginEntry({
       }
     });
 
-    void scheduledTaskRuntime.initialize().then(() => {
-      logger.info("[OpenClawCode] Scheduled task runtime initialized");
-    }).catch((error) => {
-      logger.error(`[OpenClawCode] Failed to initialize scheduled task runtime: ${String(error)}`);
-    });
+    void scheduledTaskRuntime
+      .initialize()
+      .then(() => {
+        logger.info("[OpenClawCode] Scheduled task runtime initialized");
+      })
+      .catch((error) => {
+        logger.error(
+          `[OpenClawCode] Failed to initialize scheduled task runtime: ${String(error)}`,
+        );
+      });
 
     api.on("message_received", async (event, ctx) => {
       try {
@@ -1688,7 +1839,7 @@ export default definePluginEntry({
           );
           return {
             handled: true,
-            text: "已进入 opencode 模式。现在这个会话里的所有消息都会先被 OpenClawCode 拦截并发送给 OpenCode。",
+            text: t("opencode.enter_mode"),
           };
         }
 
@@ -1698,9 +1849,7 @@ export default definePluginEntry({
           await savePluginState(state, logger);
           return {
             handled: true,
-            text: wasActive
-              ? "已离开 opencode 模式。后续消息将不再由 OpenClawCode 拦截。"
-              : "当前不在 opencode 模式。",
+            text: wasActive ? t("opencode.leave_mode") : t("opencode.leave_mode_inactive"),
           };
         }
 
@@ -1725,6 +1874,41 @@ export default definePluginEntry({
           if (taskListReply !== null) {
             await savePluginState(state, logger);
             return { handled: true, text: taskListReply };
+          }
+        }
+
+        if (renameManager.isWaitingForName()) {
+          const sessionInfo = renameManager.getSessionInfo();
+          if (sessionInfo && !content.startsWith("/")) {
+            const newTitle = content.trim();
+            if (!newTitle) {
+              return { handled: true, text: "Title must not be empty. Please enter a new title." };
+            }
+
+            try {
+              const client = createClient(config);
+              const { data: updatedSession, error } = await client.session.update({
+                sessionID: sessionInfo.sessionId,
+                directory: sessionInfo.directory,
+                title: newTitle,
+              });
+
+              if (error || !updatedSession) {
+                throw error || new Error("Failed to update session");
+              }
+
+              state.currentSession = {
+                id: sessionInfo.sessionId,
+                title: newTitle,
+                directory: sessionInfo.directory,
+              };
+              await savePluginState(state, logger);
+              renameManager.clear();
+              return { handled: true, text: `✅ Session renamed to "${newTitle}".` };
+            } catch (error) {
+              renameManager.clear();
+              return { handled: true, text: `Failed to rename session: ${String(error)}` };
+            }
           }
         }
 
@@ -1768,7 +1952,7 @@ export default definePluginEntry({
           content,
         });
         logger.info(`[OpenClawCode] queued async prompt content=${content}`);
-        return { handled: true, text: "正在处理..." };
+        return { handled: true, text: t("opencode.processing") };
       } catch (error) {
         logger.error(`[OpenClawCode] before_dispatch error: ${String(error)}`);
         return {
@@ -1778,6 +1962,8 @@ export default definePluginEntry({
       }
     });
 
-    logger.info(`[OpenClawCode] register end version=${DIAGNOSTIC_VERSION} features=thinking,tool-progress,done`);
+    logger.info(
+      `[OpenClawCode] register end version=${DIAGNOSTIC_VERSION} features=thinking,tool-progress,done`,
+    );
   },
 });

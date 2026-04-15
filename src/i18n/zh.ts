@@ -440,4 +440,54 @@ export const zh: I18nDictionary = {
   "open.no_subfolders": "📭 无子文件夹",
   "open.subfolder_count": "{count} 个子文件夹",
   "open.subfolders_count": "{count} 个子文件夹",
+
+  "opencode.enter_mode":
+    "已进入 opencode 模式。现在这个会话里的所有消息都会先被 OpenClawCode 拦截并发送给 OpenCode。",
+  "opencode.leave_mode": "已离开 opencode 模式。后续消息将不再由 OpenClawCode 拦截。",
+  "opencode.leave_mode_inactive": "当前不在 opencode 模式。",
+  "opencode.processing": "正在处理...",
+  "opencode.response_empty": "OpenCode 已接受消息，但返回的响应为空。",
+  "opencode.abort_unconfirmed": "中止请求已发送，但 OpenCode 未确认停止。",
+  "opencode.abort_timeout": "等待 OpenCode 中止请求超时。",
+  "opencode.no_active_session": "未选择活动的 OpenCode 会话。",
+  "opencode.no_projects": "OpenCode 未返回任何项目。",
+  "opencode.no_agents": "OpenCode 没有可用的代理。",
+  "opencode.no_models": "没有可用的模型。使用 /models 查看。",
+  "opencode.no_session_details": "获取会话详情失败。",
+  "opencode.no_pending_permission": "没有待处理的权限请求。",
+  "opencode.permission_cleared": "没有活动会话。权限请求已清除。",
+  "opencode.permission_reply_hint": "没有待处理的权限请求。当出现权限提示时回复 /1、/2 或 /3。",
+
+  "project.select_prompt": "请提供项目编号或路径。使用 `/projects` 查看列表或提供绝对路径。",
+  "project.not_selected_config":
+    "未选择项目。设置 plugins.entries.openclawcode.config.defaultProjectDirectory 或使用 /project。",
+  "project.not_selected": "未选择项目。先使用 `/projects`。",
+  "project.selected": "✅ 已选择项目：**{name}**\n`{path}`",
+  "project.created": "✅ **新项目已创建并选中**\n\n📁 已创建目录：`{path}`\n📝 项目：**{name}**",
+  "project.selected_existing": "✅ **项目已选中**\n\n📝 项目：**{name}**\n`{path}`",
+  "project.select_error": "选择项目失败：\n```\n{error}\n```",
+  "project.index_not_found":
+    "未找到项目 #{index}。仅有 {total} 个项目可用。使用 /projects 查看列表。",
+  "project.select_success": "✅ 已选择项目：**{name}**\n`{path}`",
+
+  "session.select_prompt": "请提供有效的会话编号。使用 `/sessions` 查看列表。",
+  "session.index_not_found":
+    "未找到会话 #{index}。仅有 {total} 个会话可用。使用 /sessions 查看列表。",
+  "session.select_success": "✅ 已选择会话：**{title}**",
+  "session.no_sessions": "在 {project} 中未找到会话。发送消息创建一个。",
+  "session.select_error": "选择会话失败。",
+
+  "agent.select_prompt": "用法：/agent <编号>。使用 /agents 列出可用代理。",
+  "agent.select_success": "已选择代理 {name}。",
+
+  "model.select_prompt": "用法：/model <编号>。使用 /models 列出可用模型。",
+  "model.select_success": "已选择模型 {provider}/{model}。",
+  "model.index_invalid": "无效的模型索引。使用 /models 查看列表（最大 {max}）。",
+  "model.select_hint": "使用 `/model <编号>` 选择模型。",
+
+  "flow.task_cancelled": "任务创建流程已取消。",
+  "flow.tasklist_cancelled": "任务列表视图已取消。",
+  "flow.rename_cancelled": "重命名流程已取消。",
+  "flow.permission_cancelled": "待处理的权限请求已清除。",
+  "flow.no_active": "没有活动的流程可停止。使用 /abort 中止会话。",
 };

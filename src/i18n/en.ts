@@ -478,6 +478,61 @@ export const en = {
   "open.no_subfolders": "📭 No subfolders",
   "open.subfolder_count": "{count} subfolder",
   "open.subfolders_count": "{count} subfolders",
+
+  "opencode.enter_mode":
+    "Entered OpenCode mode. All messages in this conversation will be intercepted by OpenClawCode and sent to OpenCode.",
+  "opencode.leave_mode":
+    "Left OpenCode mode. Messages will no longer be intercepted by OpenClawCode.",
+  "opencode.leave_mode_inactive": "Not in OpenCode mode.",
+  "opencode.processing": "Processing...",
+  "opencode.response_empty": "OpenCode accepted the message, but the response was empty.",
+  "opencode.abort_unconfirmed": "Abort request was sent, but OpenCode did not confirm the stop.",
+  "opencode.abort_timeout": "Abort request timed out while waiting for OpenCode.",
+  "opencode.no_active_session": "No active OpenCode session is selected.",
+  "opencode.no_projects": "OpenCode did not return any projects.",
+  "opencode.no_agents": "No agents available from OpenCode.",
+  "opencode.no_models": "No models available. Use /models to check.",
+  "opencode.no_session_details": "Failed to get session details.",
+  "opencode.no_pending_permission": "No pending permission request.",
+  "opencode.permission_cleared": "No active session. Permission request cleared.",
+  "opencode.permission_reply_hint":
+    "No pending permission request. Reply /1, /2, or /3 when a permission prompt appears.",
+
+  "project.select_prompt":
+    "Please provide a project number or path. Use `/projects` to see the list or provide an absolute path.",
+  "project.not_selected_config":
+    "No project is selected. Set plugins.entries.openclawcode.config.defaultProjectDirectory or use /project.",
+  "project.not_selected": "No project is selected. Use `/projects` first.",
+  "project.selected": "✅ Project selected: **{name}**\n`{path}`",
+  "project.created":
+    "✅ **New project created and selected**\n\n📁 Directory created: `{path}`\n📝 Project: **{name}**",
+  "project.selected_existing": "✅ **Project selected**\n\n📝 Project: **{name}**\n`{path}`",
+  "project.select_error": "Failed to select project:\n```\n{error}\n```",
+  "project.index_not_found":
+    "Project #{index} not found. Only {total} projects available. Use /projects to see the list.",
+  "project.select_success": "✅ Project selected: **{name}**\n`{path}`",
+
+  "session.select_prompt":
+    "Please provide a valid session number. Use `/sessions` to see the list.",
+  "session.index_not_found":
+    "Session #{index} not found. Only {total} sessions available. Use /sessions to see the list.",
+  "session.select_success": "✅ Session selected: **{title}**",
+  "session.no_sessions": "No sessions found for {project}. Send a message to create one.",
+  "session.select_error": "Failed to select session.",
+
+  "agent.select_prompt": "Usage: /agent <number>. Use /agents to list available agents.",
+  "agent.select_success": "Selected agent {name}.",
+
+  "model.select_prompt": "Usage: /model <number>. Use /models to list available models.",
+  "model.select_success": "Selected model {provider}/{model}.",
+  "model.index_invalid": "Invalid model index. Use /models to inspect the list (max {max}).",
+  "model.select_hint": "Use `/model <number>` to select a model.",
+
+  "flow.task_cancelled": "Task creation flow cancelled.",
+  "flow.tasklist_cancelled": "Task list view cancelled.",
+  "flow.rename_cancelled": "Rename flow cancelled.",
+  "flow.permission_cancelled": "Pending permission request cleared.",
+  "flow.no_active": "No active flow to stop. Use /abort to abort a session.",
 } as const;
 
 export type I18nKey = keyof typeof en;

@@ -441,4 +441,54 @@ export const zhTW: I18nDictionary = {
   "tts.not_configured": "⚠️ 語音回覆暫不可用。請先設定 `TTS_API_URL` 和 `TTS_API_KEY`。",
   "tts.disabled": "🔇 已全域關閉語音回覆。",
   "tts.failed": "⚠️ 生成語音回覆失敗。",
+
+  "opencode.enter_mode":
+    "已進入 opencode 模式。現在這個會話裡的所有消息都會先被 OpenClawCode 拦截並發送给 OpenCode。",
+  "opencode.leave_mode": "已離開 opencode 模式。後續消息將不再由 OpenClawCode 拦截。",
+  "opencode.leave_mode_inactive": "當前不在 opencode 模式。",
+  "opencode.processing": "正在處理...",
+  "opencode.response_empty": "OpenCode 已接受消息，但返回的響應為空。",
+  "opencode.abort_unconfirmed": "中止請求已發送，但 OpenCode 未確認停止。",
+  "opencode.abort_timeout": "等待 OpenCode 中止請求超時。",
+  "opencode.no_active_session": "未選擇活動的 OpenCode 會話。",
+  "opencode.no_projects": "OpenCode 未返回任何項目。",
+  "opencode.no_agents": "OpenCode 沒有可用的代理。",
+  "opencode.no_models": "沒有可用的模型。使用 /models 查看。",
+  "opencode.no_session_details": "獲取會話詳情失敗。",
+  "opencode.no_pending_permission": "沒有待處理的權限請求。",
+  "opencode.permission_cleared": "沒有活動會話。權限請求已清除。",
+  "opencode.permission_reply_hint": "沒有待處理的權限請求。當出現權限提示時回覆 /1、/2 或 /3。",
+
+  "project.select_prompt": "請提供項目編號或路徑。使用 `/projects` 查看列表或提供絕對路徑。",
+  "project.not_selected_config":
+    "未選擇項目。設置 plugins.entries.openclawcode.config.defaultProjectDirectory 或使用 /project。",
+  "project.not_selected": "未選擇項目。先使用 `/projects`。",
+  "project.selected": "✅ 已選擇項目：**{name}**\n`{path}`",
+  "project.created": "✅ **新項目已創建並選中**\n\n📁 已創建目錄：`{path}`\n📝 項目：**{name}**",
+  "project.selected_existing": "✅ **項目已選中**\n\n📝 項目：**{name}**\n`{path}`",
+  "project.select_error": "選擇項目失敗：\n```\n{error}\n```",
+  "project.index_not_found":
+    "未找到項目 #{index}。僅有 {total} 個項目可用。使用 /projects 查看列表。",
+  "project.select_success": "✅ 已選擇項目：**{name}**\n`{path}`",
+
+  "session.select_prompt": "請提供有效的會話編號。使用 `/sessions` 查看列表。",
+  "session.index_not_found":
+    "未找到會話 #{index}。僅有 {total} 個會話可用。使用 /sessions 查看列表。",
+  "session.select_success": "✅ 已選擇會話：**{title}**",
+  "session.no_sessions": "在 {project} 中未找到會話。發送消息創建一個。",
+  "session.select_error": "選擇會話失敗。",
+
+  "agent.select_prompt": "用法：/agent <編號>。使用 /agents 列出可用代理。",
+  "agent.select_success": "已選擇代理 {name}。",
+
+  "model.select_prompt": "用法：/model <編號>。使用 /models 列出可用模型。",
+  "model.select_success": "已選擇模型 {provider}/{model}。",
+  "model.index_invalid": "無效的模型索引。使用 /models 查看列表（最大 {max}）。",
+  "model.select_hint": "使用 `/model <編號>` 選擇模型。",
+
+  "flow.task_cancelled": "任務創建流程已取消。",
+  "flow.tasklist_cancelled": "任務列表視圖已取消。",
+  "flow.rename_cancelled": "重命名流程已取消。",
+  "flow.permission_cancelled": "待處理的權限請求已清除。",
+  "flow.no_active": "沒有活動的流程可停止。使用 /abort 中止會話。",
 };
