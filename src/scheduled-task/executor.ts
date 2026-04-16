@@ -4,6 +4,8 @@ import type { ScheduledTask, ScheduledTaskExecutionResult } from "./types.js";
 
 const SCHEDULED_TASK_AGENT = "build";
 const SCHEDULED_TASK_SESSION_TITLE = "Scheduled task run";
+const PERMISSION_REQUESTED_ERROR =
+  "Permission required: task cannot proceed automatically. Please execute manually in the channel.";
 
 function collectResponseText(
   parts: Array<{ type?: string; text?: string; ignored?: boolean }>,
@@ -27,11 +29,70 @@ function toErrorMessage(error: unknown): string {
   return "Unknown scheduled task execution error";
 }
 
+function normalizeText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value.trim() || undefined;
+  }
+  return undefined;
+}
+
+async function monitorSessionForPermission(
+  sessionId: string,
+  directory: string,
+  abortController: AbortController,
+): Promise<boolean> {
+  try {
+    const result = await opencodeClient.event.subscribe(
+      { directory },
+      { signal: abortController.signal },
+    );
+
+    if (!result.stream) {
+      return false;
+    }
+
+    for await (const event of result.stream) {
+      if (abortController.signal.aborted) {
+        break;
+      }
+
+      const eventType = normalizeText((event as { type?: string }).type);
+
+      if (eventType === "permission.asked") {
+        const properties = (event as { properties?: { sessionID?: string } }).properties;
+        if (properties?.sessionID === sessionId) {
+          logger.warn(
+            `[ScheduledTaskExecutor] Permission requested for session=${sessionId}, aborting task`,
+          );
+          return true;
+        }
+      }
+
+      if (eventType === "session.idle") {
+        const properties = (event as { properties?: { sessionID?: string } }).properties;
+        if (properties?.sessionID === sessionId) {
+          break;
+        }
+      }
+    }
+
+    return false;
+  } catch (error) {
+    if (abortController.signal.aborted) {
+      return true;
+    }
+    logger.warn(`[ScheduledTaskExecutor] SSE monitoring error: ${String(error)}`);
+    return false;
+  }
+}
+
 export async function executeScheduledTask(
   task: ScheduledTask,
 ): Promise<ScheduledTaskExecutionResult> {
   const startedAt = new Date().toISOString();
   let sessionId: string | null = null;
+  const abortController = new AbortController();
+  let permissionRequested = false;
 
   try {
     const { data: session, error: createError } = await opencodeClient.session.create({
@@ -44,6 +105,12 @@ export async function executeScheduledTask(
     }
 
     sessionId = session.id;
+
+    const permissionMonitor = monitorSessionForPermission(
+      session.id,
+      session.directory,
+      abortController,
+    );
 
     const promptOptions: {
       sessionID: string;
@@ -70,8 +137,35 @@ export async function executeScheduledTask(
       promptOptions.variant = task.model.variant;
     }
 
-    const { data: response, error: promptError } =
-      await opencodeClient.session.prompt(promptOptions);
+    const promptPromise = opencodeClient.session.prompt(promptOptions);
+
+    const [promptResult, permissionResult] = await Promise.all([promptPromise, permissionMonitor]);
+
+    permissionRequested = permissionResult;
+
+    if (permissionRequested) {
+      abortController.abort();
+
+      try {
+        await opencodeClient.session.abort({
+          sessionID: session.id,
+          directory: session.directory,
+        });
+      } catch (abortError) {
+        logger.warn(`[ScheduledTaskExecutor] Failed to abort session: ${String(abortError)}`);
+      }
+
+      return {
+        taskId: task.id,
+        status: "error",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        resultText: null,
+        errorMessage: PERMISSION_REQUESTED_ERROR,
+      };
+    }
+
+    const { data: response, error: promptError } = promptResult;
 
     if (promptError || !response) {
       throw promptError || new Error("Scheduled task prompt execution failed");
@@ -105,6 +199,7 @@ export async function executeScheduledTask(
       errorMessage,
     };
   } finally {
+    abortController.abort();
     if (sessionId) {
       try {
         await opencodeClient.session.delete({ sessionID: sessionId });
