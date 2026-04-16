@@ -649,6 +649,10 @@ async function streamPromptProgress(params: {
 
       const eventType = normalizeText((event as { type?: string }).type);
 
+      if (eventType) {
+        logger.info(`[OpenClawCode] SSE event: type=${eventType} session=${session.id}`);
+      }
+
       if (eventType === "permission.asked") {
         const request = (event as { properties?: PermissionRequest }).properties;
         if (request && request.sessionID === session.id) {
