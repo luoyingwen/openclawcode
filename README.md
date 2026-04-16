@@ -2,6 +2,16 @@
 
 OpenClaw plugin for OpenCode integration. Intercepts channel messages and routes them to OpenCode server.
 
+## Prerequisites
+
+Before using this plugin, you must start OpenCode with the serve parameter:
+
+```bash
+opencode serve
+```
+
+This starts the OpenCode server at `http://localhost:4096` (by default), which this plugin connects to.
+
 ## Features
 
 - Intercepts OpenClaw channel messages and routes to OpenCode
