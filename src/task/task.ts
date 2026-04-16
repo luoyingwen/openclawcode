@@ -24,6 +24,9 @@ interface TaskState {
   scheduleText: string;
   parsedSchedule: ParsedTaskSchedule | null;
   lastActivity: number;
+  channelId?: string;
+  accountId?: string;
+  conversationId?: string;
 }
 
 const taskStates = new Map<string, TaskState>();
@@ -195,6 +198,7 @@ function buildScheduledTask(
   scheduleText: string,
   parsedSchedule: ParsedTaskSchedule,
   prompt: string,
+  route: { channelId?: string; accountId?: string; conversationId?: string },
 ): ScheduledTask {
   const baseTask = {
     id: randomUUID(),
@@ -211,6 +215,9 @@ function buildScheduledTask(
     runCount: 0,
     lastStatus: "idle" as const,
     lastError: null,
+    channelId: route.channelId,
+    accountId: route.accountId,
+    conversationId: route.conversationId,
   };
 
   if (parsedSchedule.kind === "cron") {
@@ -228,7 +235,10 @@ function buildScheduledTask(
   };
 }
 
-export async function handleTaskCommand(userId: string): Promise<string> {
+export async function handleTaskCommand(
+  userId: string,
+  route: { channelId?: string; accountId?: string; conversationId?: string },
+): Promise<string> {
   const currentProject = getCurrentProject();
   if (!currentProject) {
     return t("bot.project_not_selected");
@@ -238,7 +248,6 @@ export async function handleTaskCommand(userId: string): Promise<string> {
     return t("task.limit_reached", { limit: String(config.bot.taskLimit) });
   }
 
-  // Clear any existing state for this user
   clearUserTaskState(userId, "new_task_started");
 
   const currentModel = createScheduledTaskModel(getStoredModel());
@@ -251,6 +260,9 @@ export async function handleTaskCommand(userId: string): Promise<string> {
     scheduleText: "",
     parsedSchedule: null,
     lastActivity: Date.now(),
+    channelId: route.channelId,
+    accountId: route.accountId,
+    conversationId: route.conversationId,
   };
 
   taskStates.set(userId, state);
@@ -324,6 +336,11 @@ export async function handleTaskTextInput(userId: string, text: string): Promise
         state.scheduleText,
         state.parsedSchedule,
         trimmedText,
+        {
+          channelId: state.channelId,
+          accountId: state.accountId,
+          conversationId: state.conversationId,
+        },
       );
 
       await addScheduledTask(task);

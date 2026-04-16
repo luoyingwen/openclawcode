@@ -22,7 +22,10 @@ const MESSAGE_LIMIT = 20000;
 const TASK_DESCRIPTION_PREVIEW_LENGTH = 64;
 const RESTART_INTERRUPTED_ERROR = "Task interrupted by process restart.";
 
-type NotificationCallback = (text: string) => Promise<void>;
+type NotificationCallback = (
+  text: string,
+  route: { channelId?: string; accountId?: string; conversationId?: string },
+) => Promise<void>;
 let notificationCallback: NotificationCallback | null = null;
 let initialized = false;
 
@@ -40,13 +43,16 @@ export function clearNotificationCallback(): void {
   logger.info("[ScheduledTaskRuntime] Notification callback cleared");
 }
 
-async function sendNotification(text: string): Promise<void> {
+async function sendNotification(
+  text: string,
+  route: { channelId?: string; accountId?: string; conversationId?: string },
+): Promise<void> {
   if (!notificationCallback) {
     logger.warn("[ScheduledTaskRuntime] No notification callback set");
     return;
   }
   try {
-    await notificationCallback(text);
+    await notificationCallback(text, route);
   } catch (err) {
     logger.error("[ScheduledTaskRuntime] Failed to send notification:", err);
   }
@@ -222,6 +228,11 @@ async function executeTask(taskId: string): Promise<void> {
 
       await sendNotification(
         `✅ **Scheduled task completed**\n\n**Prompt:** ${truncateDescription(task.prompt)}\n\n${truncatedSummary}`,
+        {
+          channelId: task.channelId,
+          accountId: task.accountId,
+          conversationId: task.conversationId,
+        },
       );
 
       if (task.kind === "once") {
@@ -243,6 +254,11 @@ async function executeTask(taskId: string): Promise<void> {
     } else {
       await sendNotification(
         `❌ **Scheduled task failed**\n\n**Prompt:** ${truncateDescription(task.prompt)}\n\n**Error:** ${result.errorMessage ?? "Unknown error"}`,
+        {
+          channelId: task.channelId,
+          accountId: task.accountId,
+          conversationId: task.conversationId,
+        },
       );
 
       let nextRunStr: string | null = null;
@@ -269,14 +285,29 @@ async function executeTask(taskId: string): Promise<void> {
     logger.error(`[ScheduledTaskRuntime] Task execution failed:`, err);
     await sendNotification(
       `❌ **Scheduled task error**\n\n**Prompt:** ${truncateDescription(task.prompt)}\n\n**Error:** ${String(err)}`,
+      {
+        channelId: task.channelId,
+        accountId: task.accountId,
+        conversationId: task.conversationId,
+      },
     );
   } finally {
     runningTaskIds.delete(taskId);
   }
 }
 
-async function deliverQueuedMessage(delivery: QueuedScheduledTaskDelivery): Promise<void> {
-  await sendNotification(delivery.notificationText);
+async function deliverQueuedMessage(
+  delivery: QueuedScheduledTaskDelivery & {
+    channelId?: string;
+    accountId?: string;
+    conversationId?: string;
+  },
+): Promise<void> {
+  await sendNotification(delivery.notificationText, {
+    channelId: delivery.channelId,
+    accountId: delivery.accountId,
+    conversationId: delivery.conversationId,
+  });
 }
 
 export const scheduledTaskRuntime = {

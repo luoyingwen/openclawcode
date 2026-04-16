@@ -1736,7 +1736,7 @@ async function handleCommand(params: {
   if (command.name === "task") {
     syncStateToSettings(state);
     const userId = deriveUserIdFromRoute(route);
-    return handleTaskCommand(userId);
+    return handleTaskCommand(userId, route);
   }
 
   if (command.name === "tasklist") {
@@ -1872,18 +1872,18 @@ export default definePluginEntry({
       }
     }
 
-    scheduledTaskRuntime.setNotificationCallback(async (text: string) => {
-      if (state.interceptMode?.channelId && state.interceptMode?.conversationId) {
-        const route: FollowUpRoute = {
-          channelId: state.interceptMode.channelId,
-          accountId: state.interceptMode.accountId,
-          conversationId: state.interceptMode.conversationId,
-        };
-        await sendFollowUpMessage(api, route, { text }, logger);
-      } else {
-        logger.warn("[OpenClawCode] No intercept mode, cannot send task notification");
-      }
-    });
+    scheduledTaskRuntime.setNotificationCallback(
+      async (
+        text: string,
+        route: { channelId?: string; accountId?: string; conversationId?: string },
+      ) => {
+        if (route.channelId && route.conversationId) {
+          await sendFollowUpMessage(api, route, { text }, logger);
+        } else {
+          logger.warn("[OpenClawCode] Task has no route, cannot send notification");
+        }
+      },
+    );
 
     void scheduledTaskRuntime
       .initialize()

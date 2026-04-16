@@ -25,6 +25,9 @@ export interface ScheduledTaskBase {
   runCount: number;
   lastStatus: ScheduledTaskStatus;
   lastError: string | null;
+  channelId?: string;
+  accountId?: string;
+  conversationId?: string;
 }
 
 export interface ScheduledCronTask extends ScheduledTaskBase {
