@@ -488,6 +488,13 @@ export const zhTW: I18nDictionary = {
   "model.select_success": "已選擇模型 {provider}/{model}。",
   "model.index_invalid": "無效的模型索引。使用 /models 查看列表（最大 {max}）。",
   "model.select_hint": "使用 `/model <編號>` 選擇模型。",
+  "models.header": "# 可用模型",
+  "models.favorites": "**收藏：**",
+  "models.recent": "**最近使用：**",
+  "models.current": "**當前：** {model}",
+  "models.current_none": "**當前：** 無",
+  "models.fetch_error": "獲取模型失敗：{error}",
+  "model.select_error": "選擇模型失敗：{error}",
 
   "flow.task_cancelled": "任務創建流程已取消。",
   "flow.tasklist_cancelled": "任務列表視圖已取消。",

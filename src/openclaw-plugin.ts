@@ -649,10 +649,6 @@ async function streamPromptProgress(params: {
 
       const eventType = normalizeText((event as { type?: string }).type);
 
-      if (eventType) {
-        logger.info(`[OpenClawCode] SSE event: type=${eventType} session=${session.id}`);
-      }
-
       if (eventType === "permission.asked") {
         const request = (event as { properties?: PermissionRequest }).properties;
         if (request && request.sessionID === session.id) {
@@ -704,7 +700,6 @@ async function streamPromptProgress(params: {
         const progressEvent = event as ProgressEvent;
         const idleSessionId = progressEvent.properties?.sessionID;
         if (idleSessionId === session.id) {
-          logger.info(`[OpenClawCode] Session idle detected: session=${session.id}`);
           if (onComplete && tracker.textParts.size > 0) {
             const combinedText = Array.from(tracker.textParts.values()).join("");
             if (combinedText.trim()) {
@@ -1322,8 +1317,6 @@ async function sendAsyncPromptToOpencodeWithProgress(params: {
           },
           logger,
         ).catch(() => {});
-      } else {
-        logger.info(`[OpenClawCode] session.prompt call completed: session=${session.id}`);
       }
     },
     onError: (error) => {
@@ -1788,29 +1781,29 @@ async function handleCommand(params: {
   if (command.name === "models") {
     try {
       const lists = await getModelSelectionLists();
-      const lines: string[] = ["# Available Models"];
+      const lines: string[] = [t("models.header")];
       if (lists.favorites.length > 0) {
-        lines.push("", "**Favorites:**");
+        lines.push("", t("models.favorites"));
         lists.favorites.forEach((m: FavoriteModel, i: number) =>
           lines.push(`${i + 1}. ${m.providerID}/${m.modelID}`),
         );
       }
       if (lists.recent.length > 0) {
-        lines.push("", "**Recent:**");
+        lines.push("", t("models.recent"));
         lists.recent.forEach((m: FavoriteModel, i: number) =>
           lines.push(`${i + 1}. ${m.providerID}/${m.modelID}`),
         );
       }
       const current = getStoredModel();
-      lines.push(
-        "",
-        `**Current:** ${current ? `${current.providerID}/${current.modelID}` : "none"}`,
-        "",
-        t("model.select_hint"),
-      );
+      if (current?.providerID && current.modelID) {
+        lines.push("", t("models.current", { model: `${current.providerID}/${current.modelID}` }));
+      } else {
+        lines.push("", t("models.current_none"));
+      }
+      lines.push("", t("model.select_hint"));
       return lines.join("\n");
     } catch (error) {
-      return `Failed to fetch models: ${String(error)}`;
+      return t("models.fetch_error", { error: String(error) });
     }
   }
 
@@ -1833,7 +1826,7 @@ async function handleCommand(params: {
       setCurrentModel(selected);
       return t("model.select_success", { provider: selected.providerID, model: selected.modelID });
     } catch (error) {
-      return `Failed to select model: ${String(error)}`;
+      return t("model.select_error", { error: String(error) });
     }
   }
 
@@ -1951,15 +1944,8 @@ export default definePluginEntry({
             conversationId: ctx.conversationId,
           })
         ) {
-          if (scopeMismatch) {
-            logger.info(`[OpenClawCode] message_received skipped: ${scopeMismatch}`);
-          }
           return;
         }
-
-        logger.info(
-          `[OpenClawCode] message_received channel=${ctx.channelId ?? "unknown"} account=${ctx.accountId ?? "unknown"} conversation=${ctx.conversationId ?? "unknown"} content=${normalizeText(event?.content) ?? "(no content)"}`,
-        );
       } catch (error) {
         logger.error(`[OpenClawCode] message_received error: ${String(error)}`);
       }
@@ -1985,9 +1971,6 @@ export default definePluginEntry({
             conversationId: route.conversationId,
           })
         ) {
-          if (scopeMismatch) {
-            logger.info(`[OpenClawCode] before_dispatch skipped: ${scopeMismatch}`);
-          }
           return undefined;
         }
 
@@ -2030,7 +2013,6 @@ export default definePluginEntry({
           const taskReply = await handleTaskTextInput(userId, content);
           if (taskReply !== null) {
             await savePluginState(state, logger);
-            logger.info(`[OpenClawCode] task reply length=${taskReply.length}`);
             return { handled: true, text: taskReply };
           }
         }
@@ -2039,7 +2021,6 @@ export default definePluginEntry({
           const taskListReply = await handleTaskListTextInput(userId, content);
           if (taskListReply !== null) {
             await savePluginState(state, logger);
-            logger.info(`[OpenClawCode] tasklist reply length=${taskListReply.length}`);
             return { handled: true, text: taskListReply };
           }
         }
@@ -2049,7 +2030,6 @@ export default definePluginEntry({
           if (sessionInfo && !content.startsWith("/")) {
             const newTitle = content.trim();
             if (!newTitle) {
-              logger.info(`[OpenClawCode] rename empty title rejected`);
               return { handled: true, text: "Title must not be empty. Please enter a new title." };
             }
 
@@ -2072,14 +2052,10 @@ export default definePluginEntry({
               };
               await savePluginState(state, logger);
               renameManager.clear();
-              const replyText = `✅ Session renamed to "${newTitle}".`;
-              logger.info(`[OpenClawCode] rename success replyLength=${replyText.length}`);
-              return { handled: true, text: replyText };
+              return { handled: true, text: `✅ Session renamed to "${newTitle}".` };
             } catch (error) {
               renameManager.clear();
-              const replyText = `Failed to rename session: ${String(error)}`;
-              logger.info(`[OpenClawCode] rename failed replyLength=${replyText.length}`);
-              return { handled: true, text: replyText };
+              return { handled: true, text: `Failed to rename session: ${String(error)}` };
             }
           }
         }

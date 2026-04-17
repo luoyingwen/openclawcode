@@ -536,6 +536,13 @@ export const ru: I18nDictionary = {
   "model.select_success": "Selected model {provider}/{model}.",
   "model.index_invalid": "Invalid model index. Use /models to inspect the list (max {max}).",
   "model.select_hint": "Use `/model <number>` to select a model.",
+  "models.header": "# Available Models",
+  "models.favorites": "**Favorites:**",
+  "models.recent": "**Recent:**",
+  "models.current": "**Current:** {model}",
+  "models.current_none": "**Current:** none",
+  "models.fetch_error": "Failed to fetch models: {error}",
+  "model.select_error": "Failed to select model: {error}",
 
   "flow.task_cancelled": "Task creation flow cancelled.",
   "flow.tasklist_cancelled": "Task list view cancelled.",
