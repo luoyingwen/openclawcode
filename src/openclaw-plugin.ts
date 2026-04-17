@@ -792,11 +792,15 @@ async function sendFollowUpMessage(
   }
 
   const outbound = await api.runtime.channel.outbound.loadAdapter(route.channelId);
-  const text = message.text.trim();
+  const text = message.text?.trim() ?? "";
   if (!text) {
     logger.warn("[OpenClawCode] follow-up skipped: empty message text");
     return;
   }
+
+  logger.info(
+    `[OpenClawCode] sendFollowUpMessage: channel=${route.channelId} conversation=${route.conversationId} format=${message.format ?? "text"} length=${text.length}`,
+  );
 
   const sendOptions = {
     cfg: api.config,
@@ -806,32 +810,54 @@ async function sendFollowUpMessage(
 
   try {
     if (message.format === "markdown" && outbound?.sendPayload) {
+      logger.info(
+        `[OpenClawCode] sending markdown payload: channel=${route.channelId} length=${text.length}`,
+      );
       await outbound.sendPayload({
         ...sendOptions,
         text,
         payload: { text },
       });
+      logger.info(
+        `[OpenClawCode] markdown payload sent: channel=${route.channelId} length=${text.length}`,
+      );
       return;
     }
 
     if (message.format === "text" && outbound?.sendText) {
       const chunkLimit = resolveFollowUpChunkLimit(outbound, api, route);
       const chunks = splitOutboundMessageText(text, chunkLimit);
-      for (const chunk of chunks) {
+      logger.info(
+        `[OpenClawCode] sending text chunks: channel=${route.channelId} totalLength=${text.length} chunks=${chunks.length} chunkLimit=${chunkLimit}`,
+      );
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        logger.info(
+          `[OpenClawCode] sending chunk ${i + 1}/${chunks.length}: channel=${route.channelId} length=${chunk.length}`,
+        );
         await outbound.sendText({
           ...sendOptions,
           text: chunk,
         });
+        logger.info(
+          `[OpenClawCode] chunk ${i + 1}/${chunks.length} sent: channel=${route.channelId} length=${chunk.length}`,
+        );
       }
       return;
     }
 
     if (outbound?.sendPayload) {
+      logger.info(
+        `[OpenClawCode] sending payload (fallback): channel=${route.channelId} length=${text.length}`,
+      );
       await outbound.sendPayload({
         ...sendOptions,
         text,
         payload: { text },
       });
+      logger.info(
+        `[OpenClawCode] payload sent (fallback): channel=${route.channelId} length=${text.length}`,
+      );
       return;
     }
 
@@ -844,11 +870,21 @@ async function sendFollowUpMessage(
 
     const chunkLimit = resolveFollowUpChunkLimit(outbound, api, route);
     const chunks = splitOutboundMessageText(text, chunkLimit);
-    for (const chunk of chunks) {
+    logger.info(
+      `[OpenClawCode] sending text chunks (fallback): channel=${route.channelId} totalLength=${text.length} chunks=${chunks.length} chunkLimit=${chunkLimit}`,
+    );
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      logger.info(
+        `[OpenClawCode] sending chunk ${i + 1}/${chunks.length} (fallback): channel=${route.channelId} length=${chunk.length}`,
+      );
       await outbound.sendText({
         ...sendOptions,
         text: chunk,
       });
+      logger.info(
+        `[OpenClawCode] chunk ${i + 1}/${chunks.length} sent (fallback): channel=${route.channelId} length=${chunk.length}`,
+      );
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1994,6 +2030,7 @@ export default definePluginEntry({
           const taskReply = await handleTaskTextInput(userId, content);
           if (taskReply !== null) {
             await savePluginState(state, logger);
+            logger.info(`[OpenClawCode] task reply length=${taskReply.length}`);
             return { handled: true, text: taskReply };
           }
         }
@@ -2002,6 +2039,7 @@ export default definePluginEntry({
           const taskListReply = await handleTaskListTextInput(userId, content);
           if (taskListReply !== null) {
             await savePluginState(state, logger);
+            logger.info(`[OpenClawCode] tasklist reply length=${taskListReply.length}`);
             return { handled: true, text: taskListReply };
           }
         }
@@ -2011,6 +2049,7 @@ export default definePluginEntry({
           if (sessionInfo && !content.startsWith("/")) {
             const newTitle = content.trim();
             if (!newTitle) {
+              logger.info(`[OpenClawCode] rename empty title rejected`);
               return { handled: true, text: "Title must not be empty. Please enter a new title." };
             }
 
@@ -2033,10 +2072,14 @@ export default definePluginEntry({
               };
               await savePluginState(state, logger);
               renameManager.clear();
-              return { handled: true, text: `✅ Session renamed to "${newTitle}".` };
+              const replyText = `✅ Session renamed to "${newTitle}".`;
+              logger.info(`[OpenClawCode] rename success replyLength=${replyText.length}`);
+              return { handled: true, text: replyText };
             } catch (error) {
               renameManager.clear();
-              return { handled: true, text: `Failed to rename session: ${String(error)}` };
+              const replyText = `Failed to rename session: ${String(error)}`;
+              logger.info(`[OpenClawCode] rename failed replyLength=${replyText.length}`);
+              return { handled: true, text: replyText };
             }
           }
         }
@@ -2054,7 +2097,9 @@ export default definePluginEntry({
 
         if (replyText) {
           await savePluginState(state, logger);
-          logger.info(`[OpenClawCode] intercepted command content=${content}`);
+          logger.info(
+            `[OpenClawCode] intercepted command content=${content} replyLength=${replyText.length}`,
+          );
           return { handled: true, text: replyText };
         }
 
@@ -2067,7 +2112,9 @@ export default definePluginEntry({
             content,
           });
           await savePluginState(state, logger);
-          logger.info(`[OpenClawCode] intercepted slash prompt content=${content}`);
+          logger.info(
+            `[OpenClawCode] intercepted slash prompt content=${content} replyLength=${promptReply?.length ?? 0}`,
+          );
           return { handled: true, text: promptReply };
         }
 
@@ -2080,8 +2127,11 @@ export default definePluginEntry({
           route,
           content,
         });
-        logger.info(`[OpenClawCode] queued async prompt content=${content}`);
-        return { handled: true, text: t("opencode.processing") };
+        const processingText = t("opencode.processing");
+        logger.info(
+          `[OpenClawCode] queued async prompt content=${content} processingReplyLength=${processingText.length}`,
+        );
+        return { handled: true, text: processingText };
       } catch (error) {
         logger.error(`[OpenClawCode] before_dispatch error: ${String(error)}`);
         return {
