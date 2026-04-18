@@ -59,9 +59,8 @@ install_local() {
     
     echo ""
     echo -e "${INFO}Installing from tarball: ${tarball_path}${NC}"
-    echo -e "${WARN}Plugin contains child_process - using --dangerously-force-unsafe-install${NC}"
     
-    openclaw plugins install --force --dangerously-force-unsafe-install "${tarball_path}" 2>&1 | grep -v "install-stage" || true
+    openclaw plugins install --force "${tarball_path}" 2>&1 | grep -v "install-stage" || true
     
     rm -rf ~/.openclaw/extensions/.openclaw-install-stage-* 2>/dev/null || true
     
@@ -87,8 +86,7 @@ install_link() {
     rm -rf ~/.openclaw/extensions/.openclaw-install-stage-* 2>/dev/null || true
     
     echo -e "${INFO}Linking from: ${PLUGIN_DIR}${NC}"
-    echo -e "${WARN}Plugin contains child_process - using --dangerously-force-unsafe-install${NC}"
-    openclaw plugins install --link --force --dangerously-force-unsafe-install "${PLUGIN_DIR}"
+    openclaw plugins install --link --force "${PLUGIN_DIR}"
     
     rm -rf ~/.openclaw/extensions/.openclaw-install-stage-* 2>/dev/null || true
     
