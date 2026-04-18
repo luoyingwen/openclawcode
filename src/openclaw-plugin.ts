@@ -36,7 +36,6 @@ import { safeBackgroundTask } from "./utils/safe-background-task.js";
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BUILD_INFO_PATH = path.join(PACKAGE_ROOT, "dist", "build-info.json");
-const DINGTALK_MESSAGE_LIMIT = 20_000;
 const STATE_DIRNAME = "openclawcode";
 const STATE_FILENAME = "state.json";
 const ENTER_OPENCODE_COMMAND = "opencode";
@@ -729,50 +728,6 @@ async function streamPromptProgress(params: {
   }
 }
 
-export function splitOutboundMessageText(text: string, maxLength: number): string[] {
-  if (maxLength <= 0 || text.length <= maxLength) {
-    return text.trim() ? [text] : [];
-  }
-
-  const parts: string[] = [];
-  let currentIndex = 0;
-
-  while (currentIndex < text.length) {
-    let endIndex = currentIndex + maxLength;
-
-    if (endIndex >= text.length) {
-      parts.push(text.slice(currentIndex));
-      break;
-    }
-
-    const breakPoint = text.lastIndexOf("\n", endIndex);
-    if (breakPoint > currentIndex) {
-      endIndex = breakPoint + 1;
-    }
-
-    parts.push(text.slice(currentIndex, endIndex));
-    currentIndex = endIndex;
-  }
-
-  return parts.filter((part) => part.trim().length > 0);
-}
-
-function resolveFollowUpChunkLimit(
-  outbound: Awaited<ReturnType<OpenClawPluginApi["runtime"]["channel"]["outbound"]["loadAdapter"]>>,
-  api: OpenClawPluginApi,
-  route: FollowUpRoute,
-): number {
-  return (
-    outbound?.resolveEffectiveTextChunkLimit?.({
-      cfg: api.config,
-      accountId: route.accountId,
-      fallbackLimit: outbound.textChunkLimit,
-    }) ??
-    outbound?.textChunkLimit ??
-    DINGTALK_MESSAGE_LIMIT
-  );
-}
-
 async function sendFollowUpMessage(
   api: OpenClawPluginApi,
   route: FollowUpRoute,
@@ -797,6 +752,13 @@ async function sendFollowUpMessage(
     `[OpenClawCode] sendFollowUpMessage: channel=${route.channelId} conversation=${route.conversationId} format=${message.format ?? "text"} length=${text.length}`,
   );
 
+  if (!outbound?.sendPayload) {
+    logger.warn(
+      `[OpenClawCode] follow-up skipped: outbound.sendPayload unavailable for channel=${route.channelId}`,
+    );
+    return;
+  }
+
   const sendOptions = {
     cfg: api.config,
     to: route.conversationId,
@@ -804,83 +766,11 @@ async function sendFollowUpMessage(
   };
 
   try {
-    if (message.format === "markdown" && outbound?.sendPayload) {
-      logger.info(
-        `[OpenClawCode] sending markdown payload: channel=${route.channelId} length=${text.length}`,
-      );
-      await outbound.sendPayload({
-        ...sendOptions,
-        text,
-        payload: { text },
-      });
-      logger.info(
-        `[OpenClawCode] markdown payload sent: channel=${route.channelId} length=${text.length}`,
-      );
-      return;
-    }
-
-    if (message.format === "text" && outbound?.sendText) {
-      const chunkLimit = resolveFollowUpChunkLimit(outbound, api, route);
-      const chunks = splitOutboundMessageText(text, chunkLimit);
-      logger.info(
-        `[OpenClawCode] sending text chunks: channel=${route.channelId} totalLength=${text.length} chunks=${chunks.length} chunkLimit=${chunkLimit}`,
-      );
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        logger.info(
-          `[OpenClawCode] sending chunk ${i + 1}/${chunks.length}: channel=${route.channelId} length=${chunk.length}`,
-        );
-        await outbound.sendText({
-          ...sendOptions,
-          text: chunk,
-        });
-        logger.info(
-          `[OpenClawCode] chunk ${i + 1}/${chunks.length} sent: channel=${route.channelId} length=${chunk.length}`,
-        );
-      }
-      return;
-    }
-
-    if (outbound?.sendPayload) {
-      logger.info(
-        `[OpenClawCode] sending payload (fallback): channel=${route.channelId} length=${text.length}`,
-      );
-      await outbound.sendPayload({
-        ...sendOptions,
-        text,
-        payload: { text },
-      });
-      logger.info(
-        `[OpenClawCode] payload sent (fallback): channel=${route.channelId} length=${text.length}`,
-      );
-      return;
-    }
-
-    if (!outbound?.sendText) {
-      logger.warn(
-        `[OpenClawCode] follow-up skipped: outbound adapter unavailable for channel=${route.channelId}`,
-      );
-      return;
-    }
-
-    const chunkLimit = resolveFollowUpChunkLimit(outbound, api, route);
-    const chunks = splitOutboundMessageText(text, chunkLimit);
-    logger.info(
-      `[OpenClawCode] sending text chunks (fallback): channel=${route.channelId} totalLength=${text.length} chunks=${chunks.length} chunkLimit=${chunkLimit}`,
-    );
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      logger.info(
-        `[OpenClawCode] sending chunk ${i + 1}/${chunks.length} (fallback): channel=${route.channelId} length=${chunk.length}`,
-      );
-      await outbound.sendText({
-        ...sendOptions,
-        text: chunk,
-      });
-      logger.info(
-        `[OpenClawCode] chunk ${i + 1}/${chunks.length} sent (fallback): channel=${route.channelId} length=${chunk.length}`,
-      );
-    }
+    await outbound.sendPayload({
+      ...sendOptions,
+      text,
+      payload: { text },
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (isProactivePermissionError(errorMessage)) {
